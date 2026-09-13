@@ -113,6 +113,57 @@ class GraphClient:
         return items
 
 
+def start_device_code(settings: Settings) -> dict:
+    if settings.graph_mock:
+        return {
+            "device_code": "mock-device",
+            "user_code": "RV-MOCK",
+            "verification_uri": "https://www.microsoft.com/link",
+            "verification_uri_complete": "https://www.microsoft.com/link",
+            "expires_in": 900,
+            "interval": 2,
+            "message": "Demo mode: wait a moment and the mock inbox will connect.",
+        }
+    if not settings.ms_client_id:
+        raise GraphError(400, "Missing Entra app client ID")
+    url = f"https://login.microsoftonline.com/{settings.ms_tenant}/oauth2/v2.0/devicecode"
+    data = {"client_id": settings.ms_client_id, "scope": " ".join(MS_SCOPES)}
+    with httpx.Client(timeout=30.0) as client:
+        response = client.post(url, data=data)
+    if response.status_code >= 400:
+        raise GraphError(response.status_code, response.text[:400])
+    return response.json()
+
+
+def poll_device_code(settings: Settings, device_code: str) -> dict:
+    if settings.graph_mock or device_code == "mock-device":
+        return {
+            "access_token": "mock-access-hotmail-one",
+            "refresh_token": "mock-refresh-hotmail-one",
+            "expires_in": 3600,
+            "mock_identity": "hotmail-one",
+        }
+    url = TOKEN_URL.format(tenant=settings.ms_tenant)
+    data = {
+        "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+        "client_id": settings.ms_client_id,
+        "device_code": device_code,
+    }
+    if settings.ms_client_secret:
+        data["client_secret"] = settings.ms_client_secret
+    with httpx.Client(timeout=30.0) as client:
+        response = client.post(url, data=data)
+    try:
+        body = response.json()
+    except ValueError:
+        body = {}
+    if response.status_code >= 400:
+        err = body.get("error") or "token_error"
+        desc = body.get("error_description") or response.text[:400]
+        raise GraphError(response.status_code, f"{err}: {desc}")
+    return body
+
+
 def exchange_code(settings: Settings, code: str, verifier: str) -> dict:
     if settings.graph_mock or code.startswith("mock-code-"):
         identity = code.removeprefix("mock-code-") or "hotmail-one"
@@ -137,7 +188,7 @@ def exchange_code(settings: Settings, code: str, verifier: str) -> dict:
     with httpx.Client(timeout=30.0) as client:
         response = client.post(url, data=data)
     if response.status_code >= 400:
-        raise GraphError(response.status_code, "token exchange failed")
+        raise GraphError(response.status_code, response.text[:400])
     return response.json()
 
 

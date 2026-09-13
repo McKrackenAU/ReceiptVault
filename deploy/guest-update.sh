@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs INSIDE the ReceiptVault LXC as root.
 # Downloads GitHub main as a tarball (this tree is not a git clone) and rebuilds.
-echo "ReceiptVault 1.5.0 guest update — started"
+echo "ReceiptVault 1.5.1 guest update — started"
 set -euo pipefail
 export LANG=C.UTF-8 LC_ALL=C.UTF-8 DEBIAN_FRONTEND=noninteractive
 export PATH="/usr/local/bin:/usr/bin:$PATH"
@@ -47,7 +47,7 @@ chmod +x "$APP/deploy/"*.sh "$APP/deploy/run-api.sh" 2>/dev/null || true
 id receiptvault >/dev/null 2>&1 && chown -R receiptvault:receiptvault "$APP/frontend" "$APP/backend/app" "$APP/deploy" || true
 
 if [[ -f "$ENV" ]]; then
-  grep -q '^RECEIPTVAULT_APP_VERSION=' "$ENV" && sed -i 's|^RECEIPTVAULT_APP_VERSION=.*|RECEIPTVAULT_APP_VERSION=1.5.0|' "$ENV" || echo 'RECEIPTVAULT_APP_VERSION=1.5.0' >>"$ENV"
+  grep -q '^RECEIPTVAULT_APP_VERSION=' "$ENV" && sed -i 's|^RECEIPTVAULT_APP_VERSION=.*|RECEIPTVAULT_APP_VERSION=1.5.1|' "$ENV" || echo 'RECEIPTVAULT_APP_VERSION=1.5.1' >>"$ENV"
 fi
 
 echo "Building UI"
@@ -93,5 +93,5 @@ if [[ "$ok" -ne 1 ]]; then
   journalctl -u receiptvault -n 40 --no-pager || true
   exit 1
 fi
-echo "UPDATED to 1.5.0"
-echo "Hard-refresh http://192.168.13.13/ — Settings must show 1.5.0"
+echo "UPDATED to 1.5.1"
+echo "Hard-refresh http://192.168.13.13/ — Settings must show 1.5.1"

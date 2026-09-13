@@ -21,6 +21,20 @@ def test_setup_login_and_pages(client: TestClient, owner):
     assert "not" in dash.json()["disclaimer"].lower()
 
 
+def test_device_code_connects_mock_inbox(client: TestClient, owner):
+    headers = {"X-CSRF-Token": owner["csrf"]}
+    start = client.post("/api/v1/mail/connect/device", json={"label": "Phone Hotmail"}, headers=headers)
+    assert start.status_code == 200
+    body = start.json()
+    assert body["user_code"]
+    assert body["state"]
+    polled = client.post("/api/v1/mail/connect/device/poll", json={"state": body["state"]}, headers=headers)
+    assert polled.status_code == 200
+    assert polled.json()["status"] == "connected"
+    accounts = client.get("/api/v1/mail/accounts").json()["items"]
+    assert any(a["label"] == "Phone Hotmail" for a in accounts)
+
+
 def test_three_mock_accounts_and_scan(client: TestClient, owner):
     csrf = owner["csrf"]
     headers = {"X-CSRF-Token": csrf}

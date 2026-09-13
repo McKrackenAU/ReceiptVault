@@ -31,18 +31,17 @@ export function HelpPage() {
       <Card className="mb-4">
         <h2 className="font-serif text-2xl">Connect Hotmail or Outlook</h2>
         <p className="mt-2 text-sm">
-          ReceiptVault never asks for your mailbox password. You register a free Microsoft Entra app (your own), paste the ID and
-          secret under Settings, then click Sign in with Microsoft. Microsoft shows the Hotmail login. After you approve Mail.Read,
-          you return here with the inbox connected.
+          ReceiptVault never asks for your mailbox password. Microsoft often blocks http://192.168.x.x as a redirect, so this app
+          uses a device code: you open microsoft.com/link, type a short code, and sign in to Hotmail there.
         </p>
         <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm">
           <li>Open entra.microsoft.com → App registrations → New registration. Name it ReceiptVault.</li>
           <li>Supported account types: accounts in any organisational directory <em>and</em> personal Microsoft accounts.</li>
-          <li>Redirect URI (Web): copy the exact callback from Settings (it looks like http://192.168.13.13/api/v1/mail/oauth/callback).</li>
+          <li>Authentication → enable <strong>Allow public client flows</strong> (required for the device code).</li>
           <li>Certificates &amp; secrets → New client secret. Copy the secret value once.</li>
           <li>API permissions → Microsoft Graph → Delegated: openid, profile, email, offline_access, Mail.Read. No Mail.ReadWrite or Mail.Send.</li>
           <li>Settings → paste Application (client) ID and the secret → Save Microsoft app.</li>
-          <li>Inbox accounts → Sign in with Microsoft → log into Hotmail on Microsoft&apos;s page.</li>
+          <li>Inbox accounts → Sign in with Microsoft → enter the code at the Microsoft link (your phone is fine).</li>
         </ol>
       </Card>
       <Card>

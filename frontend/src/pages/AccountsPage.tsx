@@ -37,6 +37,13 @@ export function AccountsPage() {
   const [identity, setIdentity] = useState('hotmail-one')
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  const [device, setDevice] = useState<{
+    state: string
+    user_code: string
+    verification_uri: string
+    interval: number
+    message: string
+  } | null>(null)
 
   async function refresh() {
     const r = await api<{ items: Account[] }>('/api/v1/mail/accounts')
@@ -50,38 +57,96 @@ export function AccountsPage() {
     if (params.get('connected') === '1') {
       setMessage('Microsoft sign-in finished. If the account is not listed, the callback may have failed — try Connect again.')
     }
+    if (params.get('ms_error')) {
+      setMessage(`Microsoft rejected the browser redirect (${params.get('ms_error')}). Use the device code on this page instead — HTTP LAN addresses are often blocked.`)
+    }
   }, [params])
 
   async function connect() {
     setBusy(true)
     setMessage('')
+    setDevice(null)
     try {
       const body: Record<string, string> = { label }
       if (settings?.graph_mock) body.mock_identity = identity
-      else if (hint.trim()) body.login_hint = hint.trim()
-      const r = await api<{ authorize_url: string }>('/api/v1/mail/connect', {
+      const r = await api<{
+        state: string
+        user_code: string
+        verification_uri: string
+        interval: number
+        message: string
+        mock?: boolean
+      }>('/api/v1/mail/connect/device', {
         method: 'POST',
         body: JSON.stringify(body),
       })
-      window.location.href = r.authorize_url
+      setDevice({
+        state: r.state,
+        user_code: r.user_code,
+        verification_uri: r.verification_uri,
+        interval: r.interval || 5,
+        message: r.message,
+      })
+      setMessage(r.message)
     } catch (err) {
       setMessage(err instanceof ApiError ? err.message : 'Could not start Microsoft sign-in')
       setBusy(false)
     }
   }
 
+  useEffect(() => {
+    if (!device) return
+    let stop = false
+    async function poll() {
+      while (!stop) {
+        await new Promise((ok) => setTimeout(ok, Math.max(device.interval, 3) * 1000))
+        if (stop) return
+        try {
+          const r = await api<{ status: string }>('/api/v1/mail/connect/device/poll', {
+            method: 'POST',
+            body: JSON.stringify({ state: device.state }),
+          })
+          if (r.status === 'connected') {
+            setDevice(null)
+            setBusy(false)
+            setMessage('Hotmail is connected.')
+            await refresh()
+            return
+          }
+        } catch (err) {
+          setDevice(null)
+          setBusy(false)
+          setMessage(err instanceof ApiError ? err.message : 'Microsoft sign-in failed')
+          return
+        }
+      }
+    }
+    poll()
+    return () => {
+      stop = true
+    }
+  }, [device])
+
   async function act(id: string, path: string, extra: object = {}) {
-    await api(`/api/v1/mail/accounts/${id}${path}`, { method: 'POST', body: JSON.stringify(extra) })
-    await refresh()
+    try {
+      await api(`/api/v1/mail/accounts/${id}${path}`, { method: 'POST', body: JSON.stringify(extra) })
+      await refresh()
+    } catch (err) {
+      setMessage(err instanceof ApiError ? err.message : 'Action failed')
+    }
   }
 
   async function scan(id: string, dry = false) {
-    const r = await api<{ status?: string; estimated_messages?: number }>(`/api/v1/mail/scans`, {
-      method: 'POST',
-      body: JSON.stringify({ account_id: id, folders: ['inbox'], dry_run: dry, idempotency_key: dry ? undefined : `scan-${id}-${Date.now()}` }),
-    })
-    setMessage(dry ? `Estimate: ${r.estimated_messages} messages` : `Scan ${r.status}`)
-    await refresh()
+    try {
+      const r = await api<{ status?: string; estimated_messages?: number }>(`/api/v1/mail/scans`, {
+        method: 'POST',
+        body: JSON.stringify({ account_id: id, folders: ['inbox'], dry_run: dry, idempotency_key: dry ? undefined : `scan-${id}-${Date.now()}` }),
+      })
+      setMessage(dry ? `Estimate: ${r.estimated_messages} messages` : `Scan ${r.status}`)
+      await refresh()
+    } catch (err) {
+      setMessage(err instanceof ApiError ? err.message : 'Scan failed')
+    }
   }
 
   return (
@@ -141,6 +206,18 @@ export function AccountsPage() {
             {settings?.graph_mock ? 'Connect demo inbox' : 'Sign in with Microsoft'}
           </Button>
         </div>
+        {device && (
+          <div className="mt-4 rounded-md border border-pine/20 bg-black/5 p-4">
+            <p className="text-sm">On your phone or this computer, open Microsoft and enter this code:</p>
+            <p className="mt-2 font-mono text-3xl tracking-widest">{device.user_code}</p>
+            <p className="mt-3 text-sm">
+              <a className="underline" href={device.verification_uri} target="_blank" rel="noreferrer">
+                {device.verification_uri}
+              </a>
+            </p>
+            <p className="mt-2 text-sm text-slate">Waiting for you to finish sign-in at Microsoft…</p>
+          </div>
+        )}
         {message && <p className="mt-2 text-sm">{message}</p>}
       </Card>
       <div className="grid gap-4">

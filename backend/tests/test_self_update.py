@@ -39,9 +39,9 @@ def test_apply_update_copies_tree(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("RECEIPTVAULT_ENV_FILE", str(env))
     archive = _bundle(tmp_path, "from-github")
     result = apply_update(root=root, archive=archive, skip_frontend=True, skip_restart=True)
-    assert result["version"] == "1.5.0"
+    assert result["version"] == "1.5.1"
     assert (root / "backend" / "app" / "marker.txt").read_text() == "from-github"
-    assert "RECEIPTVAULT_APP_VERSION=1.5.0" in env.read_text()
+    assert "RECEIPTVAULT_APP_VERSION=1.5.1" in env.read_text()
 
 
 def test_ops_update_rejected_outside_production(client: TestClient, owner):
@@ -53,6 +53,6 @@ def test_settings_reports_update_fields(client: TestClient, owner):
     r = client.get("/api/v1/settings")
     assert r.status_code == 200
     body = r.json()
-    assert body["app_version"] == "1.5.0"
-    assert body["latest_bundle_version"] == "1.5.0"
+    assert body["app_version"] == "1.5.1"
+    assert body["latest_bundle_version"] == "1.5.1"
     assert "can_self_update" in body

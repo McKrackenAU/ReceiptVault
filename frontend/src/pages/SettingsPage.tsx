@@ -75,12 +75,12 @@ export function SettingsPage() {
           <h2 className="font-serif text-xl">Workspace</h2>
           <Label>Selected audit year</Label>
           <Input value={year} onChange={(e) => setYear(e.target.value)} />
-          <Button className="mt-3" onClick={() => api('/api/v1/settings', { method: 'PUT', body: JSON.stringify({ selected_financial_year: year }) }).then(() => setMsg('Saved'))}>
+          <Button className="mt-3" onClick={() => api('/api/v1/settings', { method: 'PUT', body: JSON.stringify({ selected_financial_year: year }) }).then(() => setMsg('Saved')).catch((err: Error) => setMsg(err.message))}>
             Save
           </Button>
           <Label className="mt-4">Adviser notes</Label>
           <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
-          <Button className="mt-2" variant="outline" onClick={() => api('/api/v1/profile', { method: 'PUT', body: JSON.stringify({ adviser_notes: notes, common_equipment: [], audit_years: [year], periods: [] }) })}>
+          <Button className="mt-2" variant="outline" onClick={() => api('/api/v1/profile', { method: 'PUT', body: JSON.stringify({ adviser_notes: notes, common_equipment: [], audit_years: [year], periods: [] }) }).then(() => setMsg('Profile saved')).catch((err: Error) => setMsg(err.message))}>
             Save taxpayer profile
           </Button>
         </Card>
@@ -95,8 +95,9 @@ export function SettingsPage() {
           </p>
           <p className="mb-3 break-all rounded-md bg-black/5 px-2 py-1 font-mono text-xs">{settings.oauth_redirect}</p>
           <p className="mb-3 text-sm text-slate">
-            Delegated permissions only: openid, profile, email, offline_access, Mail.Read. Microsoft sign-in happens on
-            Microsoft&apos;s site. This box never asks for your Hotmail password.
+            Delegated permissions only: openid, profile, email, offline_access, Mail.Read. Turn on{' '}
+            <strong>Allow public client flows</strong> in the Entra app. Sign-in uses a short Microsoft device code so it
+            works on http://192.168.13.13/. This box never asks for your Hotmail password.
           </p>
           <Label>Application (client) ID</Label>
           <Input value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder={settings.ms_client_configured ? 'Already saved — paste to replace' : 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'} />

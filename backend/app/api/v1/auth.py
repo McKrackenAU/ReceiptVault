@@ -66,6 +66,18 @@ def _set_session_cookie(response: Response, settings: Settings, raw: str) -> Non
     )
 
 
+def _set_csrf_cookie(response: Response, settings: Settings, token: str) -> None:
+    response.set_cookie(
+        "rv_csrf",
+        token,
+        httponly=False,
+        samesite="lax",
+        secure=settings.cookie_secure,
+        max_age=settings.session_seconds,
+        path="/",
+    )
+
+
 def _new_session(db: Session, user: User, settings: Settings, request: Request) -> tuple[UserSession, str]:
     raw = new_token(32)
     session = UserSession(
@@ -104,6 +116,7 @@ def setup(body: SetupBody, request: Request, response: Response, db: Session = D
     record_audit(db, event_type="owner_setup", success=True, user_id=user.id, username=user.username, ip=client_ip(request, settings))
     db.commit()
     _set_session_cookie(response, settings, raw)
+    _set_csrf_cookie(response, settings, session.csrf_token)
     return {"ok": True, "csrf": session.csrf_token, "username": user.username}
 
 
@@ -140,6 +153,7 @@ def login(body: LoginBody, request: Request, response: Response, db: Session = D
     record_audit(db, event_type="login", success=True, user_id=user.id, username=user.username, ip=ip)
     db.commit()
     _set_session_cookie(response, settings, raw)
+    _set_csrf_cookie(response, settings, session.csrf_token)
     return {"ok": True, "csrf": session.csrf_token, "username": user.username, "totp_enabled": user.totp_enabled}
 
 
@@ -176,7 +190,13 @@ def logout_all(
 
 
 @router.get("/me")
-def me(user: User = Depends(current_user), session: UserSession = Depends(current_session)):
+def me(
+    response: Response,
+    user: User = Depends(current_user),
+    session: UserSession = Depends(current_session),
+    settings: Settings = Depends(settings_dep),
+):
+    _set_csrf_cookie(response, settings, session.csrf_token)
     return {
         "username": user.username,
         "email": user.email,
@@ -187,7 +207,12 @@ def me(user: User = Depends(current_user), session: UserSession = Depends(curren
 
 
 @router.get("/csrf")
-def csrf(session: UserSession = Depends(current_session)):
+def csrf(
+    response: Response,
+    session: UserSession = Depends(current_session),
+    settings: Settings = Depends(settings_dep),
+):
+    _set_csrf_cookie(response, settings, session.csrf_token)
     return {"csrf": session.csrf_token}
 
 

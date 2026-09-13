@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Generator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import get_settings
@@ -20,6 +20,12 @@ engine = create_engine(
     max_overflow=20,
 )
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+
+
+def ensure_schema() -> None:
+    """Add columns create_all will not alter on an existing LXC database."""
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE oauth_states ADD COLUMN IF NOT EXISTS device_code TEXT"))
 
 
 def get_db() -> Generator[Session, None, None]:

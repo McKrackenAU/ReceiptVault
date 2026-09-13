@@ -10,7 +10,7 @@
 #
 # Downloads ReceiptVault from GitHub on the HOST, unpacks it in the LXC,
 # purges Caddy, and binds the app on http://<lxc-ip>/
-echo "ReceiptVault 1.5.0 — refresh app from GitHub, purge Caddy, bind :80"
+echo "ReceiptVault 1.5.1 — refresh app from GitHub, purge Caddy, bind :80"
 set -euo pipefail
 export LANG=C.UTF-8 LC_ALL=C.UTF-8 DEBIAN_FRONTEND=noninteractive
 
@@ -166,7 +166,7 @@ if ! pct exec "$CTID" -- test -d /opt/receiptvault/backend; then
   exit 1
 fi
 
-echo "Install ReceiptVault 1.5.0 (this is what actually changes the version)"
+echo "Install ReceiptVault 1.5.1 (this is what actually changes the version)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd || true)"
 LOCAL=""
 if [[ -n "$SCRIPT_DIR" && -d "$SCRIPT_DIR/../backend" && -d "$SCRIPT_DIR/../frontend" ]]; then
@@ -219,7 +219,7 @@ if [[ ! -f "$APP/frontend/dist/index.html" ]]; then
   echo "ERROR: UI build did not produce frontend/dist/index.html"
   exit 1
 fi
-echo "Unpacked ReceiptVault 1.5.0"
+echo "Unpacked ReceiptVault 1.5.1"
 EOS
 
 echo "Purging Caddy and binding ReceiptVault on port 80"
@@ -272,7 +272,7 @@ grep -q '^RECEIPTVAULT_PUBLIC_URL=' "$ENV" && sed -i "s|^RECEIPTVAULT_PUBLIC_URL
 grep -q '^RECEIPTVAULT_LAN_PORT=' "$ENV" && sed -i "s|^RECEIPTVAULT_LAN_PORT=.*|RECEIPTVAULT_LAN_PORT=80|" "$ENV" || echo "RECEIPTVAULT_LAN_PORT=80" >>"$ENV"
 grep -q '^RECEIPTVAULT_API_HOST=' "$ENV" && sed -i "s|^RECEIPTVAULT_API_HOST=.*|RECEIPTVAULT_API_HOST=0.0.0.0|" "$ENV" || echo "RECEIPTVAULT_API_HOST=0.0.0.0" >>"$ENV"
 grep -q '^RECEIPTVAULT_API_PORT=' "$ENV" && sed -i "s|^RECEIPTVAULT_API_PORT=.*|RECEIPTVAULT_API_PORT=80|" "$ENV" || echo "RECEIPTVAULT_API_PORT=80" >>"$ENV"
-grep -q '^RECEIPTVAULT_APP_VERSION=' "$ENV" && sed -i "s|^RECEIPTVAULT_APP_VERSION=.*|RECEIPTVAULT_APP_VERSION=1.5.0|" "$ENV" || echo "RECEIPTVAULT_APP_VERSION=1.5.0" >>"$ENV"
+grep -q '^RECEIPTVAULT_APP_VERSION=' "$ENV" && sed -i "s|^RECEIPTVAULT_APP_VERSION=.*|RECEIPTVAULT_APP_VERSION=1.5.1|" "$ENV" || echo "RECEIPTVAULT_APP_VERSION=1.5.1" >>"$ENV"
 
 mkdir -p "$APP/deploy"
 cat >"$APP/deploy/run-api.sh" <<'RUN'
@@ -363,7 +363,7 @@ if echo "$page" | grep -qi 'Your web server is working'; then
   ss -lntp || true
   exit 1
 fi
-echo "App is up on http://${IP}/  version 1.5.0"
+echo "App is up on http://${IP}/  version 1.5.1"
 EOS
 
 echo
@@ -402,6 +402,6 @@ echo
 echo "Open this in the browser (no port number):"
 echo "  http://${LXC_IP}/"
 echo "Hard-refresh the tab (Ctrl+Shift+R)."
-echo "Settings must show 1.5.0."
+echo "Settings must show 1.5.1."
 echo "Next update, type this on the Proxmox host:"
 echo "  receiptvault-update"

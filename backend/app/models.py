@@ -486,5 +486,6 @@ class OauthState(Base):
     code_verifier: Mapped[str] = mapped_column(String(128), nullable=False)
     label: Mapped[str] = mapped_column(String(120), nullable=False)
     mock_identity: Mapped[str | None] = mapped_column(String(64))
+    device_code: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = utcnow()
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

@@ -8,8 +8,16 @@ from app.logging import redact_mapping
 
 
 def test_csrf_required(client: TestClient, owner):
+    client.cookies.set("rv_csrf", "", domain="testserver")
+    client.cookies.delete("rv_csrf")
     r = client.post("/api/v1/auth/logout")
     assert r.status_code == 403
+
+
+def test_csrf_cookie_allows_post(client: TestClient, owner):
+    client.get("/api/v1/auth/me")
+    r = client.post("/api/v1/auth/logout")
+    assert r.status_code in {200, 204}
 
 
 def test_unauthorized_object_access(client: TestClient):

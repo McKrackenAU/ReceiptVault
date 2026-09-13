@@ -14,7 +14,7 @@ from app.db import get_db
 from app.errors import AppError
 from app.models import MailboxAccount, OauthState, ProcessingJob, User
 from app.services.audit import record_audit
-from app.services.graph import GraphClient, exchange_code, mask_address
+from app.services.graph import GraphClient, GraphError, exchange_code, mask_address, poll_device_code, start_device_code
 from app.services.graph_mock import MOCK_IDENTITIES
 from app.services.jobs import create_job
 from app.services.oauth import MS_SCOPES, authorize_url, new_state, pkce_pair
@@ -27,6 +27,10 @@ class ConnectBody(BaseModel):
     label: str = Field(min_length=1, max_length=120)
     mock_identity: str | None = None
     login_hint: str | None = None
+
+
+class DevicePollBody(BaseModel):
+    state: str
 
 
 class ScanBody(BaseModel):
@@ -88,38 +92,101 @@ def connect_start(
     return {"authorize_url": url, "mock": False}
 
 
+@router.post("/mail/connect/device")
+def connect_device(
+    body: ConnectBody,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(settings_dep),
+    _: None = Depends(require_csrf),
+):
+    """Device-code Hotmail login. Works on http://192.168.x.x (Microsoft often rejects HTTP redirects)."""
+    if settings.graph_mock:
+        started = start_device_code(settings)
+    elif not settings.ms_client_id:
+        raise AppError(400, "Missing Entra app", "Save the Application (client) ID in Settings first")
+    else:
+        try:
+            started = start_device_code(settings)
+        except GraphError as exc:
+            raise AppError(exc.status, "Microsoft device login failed", exc.detail) from exc
+    state = new_state()
+    expires = datetime.now(timezone.utc) + timedelta(seconds=int(started.get("expires_in") or 900))
+    db.add(
+        OauthState(
+            state=state,
+            code_verifier="",
+            label=body.label,
+            mock_identity=body.mock_identity if settings.graph_mock else None,
+            device_code=started.get("device_code"),
+            expires_at=expires,
+        )
+    )
+    db.commit()
+    return {
+        "state": state,
+        "user_code": started.get("user_code"),
+        "verification_uri": started.get("verification_uri") or "https://www.microsoft.com/link",
+        "verification_uri_complete": started.get("verification_uri_complete"),
+        "interval": int(started.get("interval") or 5),
+        "expires_in": int(started.get("expires_in") or 900),
+        "message": started.get("message")
+        or "Open the Microsoft link, enter this code, then sign in to Hotmail.",
+        "mock": settings.graph_mock,
+    }
+
+
+@router.post("/mail/connect/device/poll")
+def connect_device_poll(
+    body: DevicePollBody,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(settings_dep),
+    _: None = Depends(require_csrf),
+):
+    row = db.query(OauthState).filter(OauthState.state == body.state).one_or_none()
+    if not row or row.expires_at <= datetime.now(timezone.utc):
+        raise AppError(400, "Login expired", "Start Sign in with Microsoft again")
+    try:
+        tokens = poll_device_code(settings, row.device_code or "mock-device")
+    except GraphError as exc:
+        detail = exc.detail.lower()
+        if "authorization_pending" in detail or "authorization_pending" in exc.detail:
+            return {"status": "pending"}
+        if "slow_down" in detail:
+            return {"status": "pending", "slow_down": True}
+        if "expired" in detail:
+            raise AppError(400, "Login expired", "The Microsoft code timed out. Start again.") from exc
+        if "declined" in detail or "access_denied" in detail:
+            raise AppError(400, "Sign-in cancelled", "Microsoft said the sign-in was declined.") from exc
+        raise AppError(exc.status if exc.status < 500 else 400, "Microsoft sign-in failed", exc.detail) from exc
+    account = _store_connected_account(db, settings, request, row, tokens)
+    return {"status": "connected", "account": _account_payload(account)}
+
+
 @router.get("/mail/oauth/callback")
-def oauth_callback(code: str, state: str, request: Request, db: Session = Depends(get_db), settings: Settings = Depends(settings_dep)):
+def oauth_callback(
+    request: Request,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(settings_dep),
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    error_description: str | None = None,
+):
+    if error:
+        return RedirectResponse(url=f"/accounts?ms_error={error}", status_code=302)
+    if not code or not state:
+        raise AppError(400, "Invalid callback", "Microsoft did not return a code. Use device sign-in instead.")
     row = db.query(OauthState).filter(OauthState.state == state).one_or_none()
     if not row or row.expires_at <= datetime.now(timezone.utc):
         raise AppError(400, "Invalid state", "OAuth state is missing or expired")
-    tokens = exchange_code(settings, code, row.code_verifier)
-    identity = tokens.get("mock_identity") or row.mock_identity
-    client = GraphClient(settings, tokens.get("access_token", "mock"), identity)
-    profile = client.profile()
-    address = profile.get("mail") or profile.get("userPrincipalName") or profile.get("displayName")
-    account = MailboxAccount(
-        label=row.label,
-        masked_address=mask_address(address),
-        address_hash=hash_token(address.lower()),
-        provider_type=profile.get("account_type") or "personal",
-        ms_user_id=profile.get("id"),
-        refresh_token_encrypted=encrypt_secret(tokens.get("refresh_token") or "none"),
-        access_token_encrypted=encrypt_secret(tokens.get("access_token") or "none"),
-        access_token_expires_at=datetime.now(timezone.utc) + timedelta(seconds=int(tokens.get("expires_in") or 3600)),
-        last_token_refresh_at=datetime.now(timezone.utc),
-        mock_identity=identity,
-    )
-    db.add(account)
-    record_audit(
-        db,
-        event_type="account_connected",
-        success=True,
-        ip=client_ip(request, settings),
-        metadata={"label": row.label},
-    )
-    db.delete(row)
-    db.commit()
+    try:
+        tokens = exchange_code(settings, code, row.code_verifier)
+    except GraphError as exc:
+        raise AppError(400, "Microsoft token exchange failed", exc.detail) from exc
+    _store_connected_account(db, settings, request, row, tokens)
     return RedirectResponse(url="/accounts?connected=1", status_code=302)
 
 
@@ -211,6 +278,37 @@ def oauth_instructions(settings: Settings = Depends(settings_dep), user: User = 
         "graph_mock": settings.graph_mock,
         "mock_identities": list(MOCK_IDENTITIES),
     }
+
+
+def _store_connected_account(db: Session, settings: Settings, request: Request, row: OauthState, tokens: dict) -> MailboxAccount:
+    identity = tokens.get("mock_identity") or row.mock_identity
+    client = GraphClient(settings, tokens.get("access_token", "mock"), identity)
+    profile = client.profile()
+    address = profile.get("mail") or profile.get("userPrincipalName") or profile.get("displayName") or "unknown"
+    account = MailboxAccount(
+        label=row.label,
+        masked_address=mask_address(address),
+        address_hash=hash_token(address.lower()),
+        provider_type=profile.get("account_type") or "personal",
+        ms_user_id=profile.get("id"),
+        refresh_token_encrypted=encrypt_secret(tokens.get("refresh_token") or "none"),
+        access_token_encrypted=encrypt_secret(tokens.get("access_token") or "none"),
+        access_token_expires_at=datetime.now(timezone.utc) + timedelta(seconds=int(tokens.get("expires_in") or 3600)),
+        last_token_refresh_at=datetime.now(timezone.utc),
+        mock_identity=identity,
+    )
+    db.add(account)
+    record_audit(
+        db,
+        event_type="account_connected",
+        success=True,
+        ip=client_ip(request, settings),
+        metadata={"label": row.label},
+    )
+    db.delete(row)
+    db.commit()
+    db.refresh(account)
+    return account
 
 
 def _get_account(db: Session, account_id: str) -> MailboxAccount:

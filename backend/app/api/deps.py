@@ -56,5 +56,7 @@ def require_csrf(
     if request.method in {"GET", "HEAD", "OPTIONS"}:
         return
     header = request.headers.get(settings.csrf_header)
-    if not header or header != session.csrf_token:
-        raise AppError(403, "CSRF failed", "Missing or invalid CSRF token")
+    cookie = request.cookies.get("rv_csrf")
+    if header == session.csrf_token or cookie == session.csrf_token:
+        return
+    raise AppError(403, "CSRF failed", "Missing or invalid CSRF token")

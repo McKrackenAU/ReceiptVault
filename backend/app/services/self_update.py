@@ -8,7 +8,7 @@ import tempfile
 import urllib.request
 from pathlib import Path
 
-APP_VERSION = "1.5.0"
+APP_VERSION = "1.5.1"
 DEFAULT_TARBALL = "https://github.com/McKrackenAU/ReceiptVault/archive/refs/heads/main.tar.gz"
 DEFAULT_ROOT = Path("/opt/receiptvault")
 

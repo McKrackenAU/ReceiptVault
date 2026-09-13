@@ -5,7 +5,7 @@
 #
 # Downloads the tree on the HOST (which can reach GitHub), then copies it
 # into the LXC. The guest often cannot git-pull and sometimes cannot curl GitHub.
-echo "ReceiptVault 1.5.0 — host download, then unpack in the LXC"
+echo "ReceiptVault 1.5.1 — host download, then unpack in the LXC"
 set -euo pipefail
 export LANG=C.UTF-8 LC_ALL=C.UTF-8
 
@@ -76,7 +76,7 @@ if [[ ! -f "$APP/frontend/dist/index.html" ]]; then
 fi
 ENV=/etc/receiptvault/receiptvault.env
 if [[ -f "$ENV" ]]; then
-  grep -q '^RECEIPTVAULT_APP_VERSION=' "$ENV" && sed -i 's|^RECEIPTVAULT_APP_VERSION=.*|RECEIPTVAULT_APP_VERSION=1.5.0|' "$ENV" || echo 'RECEIPTVAULT_APP_VERSION=1.5.0' >>"$ENV"
+  grep -q '^RECEIPTVAULT_APP_VERSION=' "$ENV" && sed -i 's|^RECEIPTVAULT_APP_VERSION=.*|RECEIPTVAULT_APP_VERSION=1.5.1|' "$ENV" || echo 'RECEIPTVAULT_APP_VERSION=1.5.1' >>"$ENV"
 fi
 systemctl restart receiptvault
 ok=0
@@ -91,4 +91,4 @@ fi
 echo UPDATED
 EOS
 
-echo "Open http://192.168.13.13/ and hard-refresh (Ctrl+Shift+R). Settings must show 1.5.0."
+echo "Open http://192.168.13.13/ and hard-refresh (Ctrl+Shift+R). Settings must show 1.5.1."

@@ -67,6 +67,9 @@ def live():
 def startup():
     settings.ensure_dirs()
     Base.metadata.create_all(bind=engine)
+    from app.db import ensure_schema
+
+    ensure_schema()
     log.info("receiptvault_started", version=__version__, env=settings.env)
 
 
