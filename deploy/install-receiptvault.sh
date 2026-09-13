@@ -378,7 +378,7 @@ if [[ "$MODE" == "repair" || "$MODE" == "update" || "$MODE" == "backup" || "$MOD
     update)
       TGZ=/tmp/receiptvault-main.tgz
       echo "Downloading ${REPO_URL} (${REPO_REF}) on the Proxmox host"
-      wget --no-cache -O "$TGZ" "https://github.com/McKrackenAU/ReceiptVault/archive/refs/heads/${REPO_REF}.tar.gz"
+      wget -4 --timeout=40 --tries=3 -nv --no-cache -O "$TGZ" "https://github.com/McKrackenAU/ReceiptVault/archive/refs/heads/${REPO_REF}.tar.gz"
       if ! gzip -t "$TGZ" 2>/dev/null; then
         msg "GitHub download failed. The LXC has no git repo, so updates must come from the host."
         exit 1

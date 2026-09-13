@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Run as root on the Proxmox HOST (the shell that has pct).
-# One line (safe for noVNC — no backslash, no $(...), do not pipe to bash):
+# One line (safe for noVNC — no backslash, no $(...), do not pipe to bash).
+# echo prints first so the console is not blank while wget runs.
 #
-#   wget --no-cache -O /root/fix-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh && bash /root/fix-receiptvault.sh
+#   echo UPDATE && wget -4 --timeout=25 --tries=2 -nv -O /root/fix-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh && bash /root/fix-receiptvault.sh
 #
 # If the script cannot find the CT, add the CTID from pct list:
-#   wget --no-cache -O /root/fix-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh && bash /root/fix-receiptvault.sh 200
+#   echo UPDATE && wget -4 --timeout=25 --tries=2 -nv -O /root/fix-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh && bash /root/fix-receiptvault.sh 200
 #
 # Downloads ReceiptVault from GitHub on the HOST, unpacks it in the LXC,
 # purges Caddy, and binds the app on http://<lxc-ip>/
@@ -167,7 +168,9 @@ fi
 
 echo "Install ReceiptVault 1.4.0 from GitHub (this is what actually changes the version)"
 TGZ=/tmp/receiptvault-main.tgz
-wget --no-cache -O "$TGZ" https://github.com/McKrackenAU/ReceiptVault/archive/refs/heads/main.tar.gz
+echo "Downloading source (IPv4, 40s timeout)..."
+wget -4 --timeout=40 --tries=3 -nv --no-cache -O "$TGZ" https://github.com/McKrackenAU/ReceiptVault/archive/refs/heads/main.tar.gz
+echo "Download finished."
 if ! gzip -t "$TGZ" 2>/dev/null; then
   echo "ERROR: GitHub download was not a gzip archive. First bytes:"
   head -c 200 "$TGZ"; echo

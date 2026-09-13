@@ -71,7 +71,7 @@ Do not put mailbox passwords or tunnel tokens on the wget line. Cloudflare token
 To update an existing CT, paste this **one line** on the Proxmox host (noVNC-safe: no backslash, no `$(...)`, do not pipe to bash):
 
 ```bash
-wget --no-cache -O /root/fix-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh && bash /root/fix-receiptvault.sh
+echo UPDATE && wget -4 --timeout=25 --tries=2 -nv -O /root/fix-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh && bash /root/fix-receiptvault.sh
 ```
 
 The first line of output must say `ReceiptVault 1.4.0`. Then open **http://192.168.13.13/** and hard-refresh (Ctrl+Shift+R). Settings must show **1.4.0**. If the script cannot find the CT, add the CTID from `pct list` at the end, for example `&& bash /root/fix-receiptvault.sh 200`.

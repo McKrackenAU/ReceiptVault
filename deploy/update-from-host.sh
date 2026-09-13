@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run as root on the Proxmox HOST. One line (safe for noVNC):
 #
-#   wget --no-cache -O /root/update-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/update-from-host.sh && bash /root/update-receiptvault.sh
+#   echo UPDATE && wget -4 --timeout=25 --tries=2 -nv -O /root/update-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/update-from-host.sh && bash /root/update-receiptvault.sh
 #
 # Downloads the tree on the HOST (which can reach GitHub), then copies it
 # into the LXC. The guest often cannot git-pull and sometimes cannot curl GitHub.
@@ -34,8 +34,8 @@ if [[ -z "$CTID" ]]; then
 fi
 
 TGZ=/tmp/receiptvault-main.tgz
-echo "Downloading source on the Proxmox host"
-wget --no-cache -O "$TGZ" https://github.com/McKrackenAU/ReceiptVault/archive/refs/heads/main.tar.gz
+echo "Downloading source on the Proxmox host (IPv4, 40s timeout)"
+wget -4 --timeout=40 --tries=3 -nv --no-cache -O "$TGZ" https://github.com/McKrackenAU/ReceiptVault/archive/refs/heads/main.tar.gz
 if ! gzip -t "$TGZ" 2>/dev/null; then
   echo "Download was not a gzip archive. First bytes:"
   head -c 200 "$TGZ"; echo

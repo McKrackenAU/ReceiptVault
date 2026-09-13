@@ -79,13 +79,13 @@ The helper detects the local tree and copies it into the LXC instead of cloning.
 On the Proxmox host, paste this **one line** (noVNC-safe: no backslash, no `$(...)`):
 
 ```bash
-wget --no-cache -O /root/fix-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh && bash /root/fix-receiptvault.sh
+echo UPDATE && wget -4 --timeout=25 --tries=2 -nv -O /root/fix-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh && bash /root/fix-receiptvault.sh
 ```
 
 If the script cannot find the CT, add the CTID from `pct list`:
 
 ```bash
-wget --no-cache -O /root/fix-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh && bash /root/fix-receiptvault.sh 200
+echo UPDATE && wget -4 --timeout=25 --tries=2 -nv -O /root/fix-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh && bash /root/fix-receiptvault.sh 200
 ```
 
 The first line of output must say `ReceiptVault 1.4.0`. That download is what actually replaces the 1.0.0 files. It also takes `192.168.13.13` off any other LXC, purges Caddy, and binds ReceiptVault on port 80.
@@ -97,7 +97,7 @@ Then open **http://192.168.13.13/** (or the IP you entered). The LXC uses the ga
 The LXC is not a git clone. Do not run `git pull` inside it. Paste this **one line** on the Proxmox host:
 
 ```bash
-wget --no-cache -O /root/fix-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh && bash /root/fix-receiptvault.sh
+echo UPDATE && wget -4 --timeout=25 --tries=2 -nv -O /root/fix-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh && bash /root/fix-receiptvault.sh
 ```
 
 First line of output must be `ReceiptVault 1.4.0`. Then hard-refresh **http://192.168.13.13/**. Settings must show **1.4.0**.
