@@ -21,7 +21,27 @@ fi
 
 PORT="${2:-8082}"
 LXC_IP="${3:-${RECEIPTVAULT_LXC_IP:-192.168.13.13}}"
-BRIDGE="${RECEIPTVAULT_BRIDGE:-vmbr0}"
+MGMT_BRIDGE="${RECEIPTVAULT_MGMT_BRIDGE:-vmbr0}"
+
+pick_lxc_bridge() {
+  local net="${1%.*}"
+  local br
+  if [[ -n "${RECEIPTVAULT_BRIDGE:-}" ]]; then
+    printf '%s\n' "$RECEIPTVAULT_BRIDGE"
+    return 0
+  fi
+  for br in $(ip -o link show | awk -F': ' '/vmbr[0-9]/ {gsub(/@.*/,"",$2); print $2}'); do
+    if ip -4 addr show dev "$br" 2>/dev/null | grep -q "inet ${net}\\."; then
+      printf '%s\n' "$br"
+      return 0
+    fi
+  done
+  if ip link show vmbr1 >/dev/null 2>&1; then
+    printf '%s\n' vmbr1
+    return 0
+  fi
+  printf '%s\n' "$MGMT_BRIDGE"
+}
 
 find_ct() {
   local id
@@ -58,25 +78,32 @@ if ! pct status "$CTID" | grep -q running; then
   sleep 3
 fi
 
-HOST_CIDR="$(ip -4 -o addr show dev "$BRIDGE" 2>/dev/null | awk '{print $4; exit}')"
+HOST_CIDR="$(ip -4 -o addr show dev "$MGMT_BRIDGE" 2>/dev/null | awk '{print $4; exit}')"
 if [[ -z "$HOST_CIDR" ]]; then
-  echo "Bridge ${BRIDGE} has no IPv4 address. Available interfaces:"
+  echo "Management bridge ${MGMT_BRIDGE} has no IPv4 address. Interfaces:"
   ip -4 -o addr
   exit 1
 fi
 HOST_IP="${HOST_CIDR%%/*}"
+BRIDGE="$(pick_lxc_bridge "$LXC_IP")"
 LXC_CIDR="${LXC_IP}/24"
-LXC_GW="${LXC_IP%.*}.1"
+EXISTING_GW="$(ip -4 -o addr show dev "$BRIDGE" 2>/dev/null | awk '{print $4}' | grep "^${LXC_IP%.*}\\." | head -1 || true)"
+if [[ -n "$EXISTING_GW" ]]; then
+  LXC_GW="${EXISTING_GW%%/*}"
+else
+  LXC_GW="${LXC_IP%.*}.1"
+fi
 
 echo
-echo "Topology: Proxmox host ${HOST_IP} (${BRIDGE}). LXC stays ${LXC_IP}/24."
-echo "Adding ${LXC_GW}/24 on the host so it can route to the LXC, and"
-echo "forwarding host port ${PORT} -> ${LXC_IP}:${PORT} so a laptop that"
-echo "already opens https://${HOST_IP}:8006 can use http://${HOST_IP}:${PORT}/"
+echo "Dedicated-server layout:"
+echo "  Proxmox management: ${HOST_IP} on ${MGMT_BRIDGE}"
+echo "  ReceiptVault LXC:   ${LXC_IP}/24 on ${BRIDGE} (gateway ${LXC_GW})"
+echo "  Bridges on this host:"
+ip -4 -o addr show | awk '/vmbr/ {print "   ", $2, $4}'
+echo
+echo "Forwarding ${HOST_IP}:${PORT} -> ${LXC_IP}:${PORT}"
 echo
 
-# Host becomes the gateway for 192.168.13.0/24 on the same bridge (does not
-# change the host's 192.168.14.1 address).
 if ! ip -4 addr show dev "$BRIDGE" | grep -q "inet ${LXC_GW}/"; then
   ip addr add "${LXC_GW}/24" dev "$BRIDGE"
 fi

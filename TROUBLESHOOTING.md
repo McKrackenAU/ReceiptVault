@@ -35,7 +35,7 @@ wget -O /root/fix-receiptvault.sh \
 bash /root/fix-receiptvault.sh
 ```
 
-It keeps the LXC at **192.168.13.13**, adds `192.168.13.1` on the Proxmox host so those two subnets can talk, stops Caddy, binds the app on **8082**, and forwards `http://192.168.14.1:8082/` to the LXC. From the laptop that already opens Proxmox, use **http://192.168.14.1:8082/**. From the 192.168.13.x network, use **http://192.168.13.13:8082/**.
+On a dedicated Proxmox box the host can stay **192.168.14.1** (management) while the LXC stays **192.168.13.13** (app LAN). The script plugs the CT into the bridge that already has `192.168.13.x` (or `vmbr1` if that exists), keeps `.13.13`, and forwards `http://192.168.14.1:8082/` to the LXC. From the management laptop use **http://192.168.14.1:8082/**. From the `.13` LAN use **http://192.168.13.13:8082/**.
 
 ## App will not start
 
