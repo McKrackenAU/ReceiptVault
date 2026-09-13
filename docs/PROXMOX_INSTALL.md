@@ -70,7 +70,19 @@ bash deploy/install-receiptvault.sh
 
 The helper detects the local tree and copies it into the LXC instead of cloning.
 
-## 5. After install
+## 5. If the UI is not reachable
+
+On the Proxmox host:
+
+```bash
+wget -O /root/fix-receiptvault.sh \
+  https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh
+bash /root/fix-receiptvault.sh
+```
+
+Open the `http://<lan-ip>:8082/` URL it prints. That address is on the same subnet as the Proxmox host.
+
+## 6. After install
 
 - Existing Cloudflare Tunnel origin: `http://<lxc-ip>:8080`
 - Re-run the same helper and choose **Update**, **Repair**, **Backup**, or **Uninstall**

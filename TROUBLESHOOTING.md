@@ -25,17 +25,19 @@ pct exec <CTID> -- systemctl restart caddy
 
 Then open `http://192.168.14.13/` (port 80) or `http://192.168.14.13:8080`.
 
-## Caddy page instead of ReceiptVault
+## Cannot open the app / still see Caddy
 
-Caddy is no longer used on the LAN. Its Debian welcome page was what you saw on port 80. ReceiptVault now listens itself on a port such as **8082**.
-
-On the Proxmox host (replace `200` with your CTID from `pct list`):
+Run this **on the Proxmox host** (the shell where `pct` works), not inside the LXC:
 
 ```bash
-pct exec 200 -- bash -lc 'curl -fsSL https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/make-reachable.sh -o /tmp/make-reachable.sh && bash /tmp/make-reachable.sh 192.168.13.13 8082'
+wget -O /root/fix-receiptvault.sh \
+  https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh
+bash /root/fix-receiptvault.sh
 ```
 
-Then open **http://192.168.13.13:8082/** — owner setup or login, not Caddy.
+It finds the container, puts it on the **same subnet as vmbr0** (if Proxmox is `192.168.14.1`, the app becomes `192.168.14.13`), stops Caddy, binds ReceiptVault on port **8082**, and curls the page from the host. Open the URL it prints, for example `http://192.168.14.13:8082/`.
+
+`192.168.13.13` is a different network from `192.168.14.1`. A laptop that loads `https://192.168.14.1:8006` will not reach `.13.13` without a router.
 
 ## App will not start
 

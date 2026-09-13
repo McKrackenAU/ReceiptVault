@@ -24,6 +24,7 @@ def test_installer_shell_syntax():
     _bash_n(DEPLOY / "repair-in-place.sh")
     _bash_n(DEPLOY / "make-reachable.sh")
     _bash_n(DEPLOY / "run-api.sh")
+    _bash_n(DEPLOY / "fix-from-host.sh")
 
 
 def test_bootstrap_and_network_scripts_syntax():
