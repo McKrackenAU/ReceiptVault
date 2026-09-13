@@ -80,7 +80,7 @@ wget -O /root/fix-receiptvault.sh \
 bash /root/fix-receiptvault.sh
 ```
 
-Open the `http://<lan-ip>:8082/` URL it prints. That address is on the same subnet as the Proxmox host.
+If the host is `192.168.14.1` and the LXC is `192.168.13.13`, open `http://192.168.14.1:8082/` from the Proxmox laptop, or `http://192.168.13.13:8082/` from the `.13` network.
 
 ## 6. After install
 

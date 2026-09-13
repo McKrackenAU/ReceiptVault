@@ -5,7 +5,8 @@
 #     https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh
 #   bash /root/fix-receiptvault.sh
 #
-# Optional: bash /root/fix-receiptvault.sh <CTID> <PORT>
+# Optional: bash /root/fix-receiptvault.sh <CTID> <PORT> <LXC_IP>
+# Default LXC address is 192.168.13.13 (host stays on 192.168.14.1).
 set -euo pipefail
 export LANG=C.UTF-8 LC_ALL=C.UTF-8
 
@@ -19,6 +20,7 @@ if ! command -v pct >/dev/null; then
 fi
 
 PORT="${2:-8082}"
+LXC_IP="${3:-${RECEIPTVAULT_LXC_IP:-192.168.13.13}}"
 BRIDGE="${RECEIPTVAULT_BRIDGE:-vmbr0}"
 
 find_ct() {
@@ -43,11 +45,11 @@ CTID="$(find_ct "${1:-}" || true)"
 if [[ -z "$CTID" ]]; then
   echo "Could not find a ReceiptVault container. Running containers:"
   pct list
-  echo "Re-run as: bash $0 <CTID> ${PORT}"
+  echo "Re-run as: bash $0 <CTID> ${PORT} ${LXC_IP}"
   exit 1
 fi
 
-echo "==== Using CT ${CTID}  port ${PORT} ===="
+echo "==== Using CT ${CTID}  LXC ${LXC_IP}  port ${PORT} ===="
 pct list | awk -v id="$CTID" 'NR==1 || $1==id'
 
 if ! pct status "$CTID" | grep -q running; then
@@ -63,37 +65,67 @@ if [[ -z "$HOST_CIDR" ]]; then
   exit 1
 fi
 HOST_IP="${HOST_CIDR%%/*}"
-PREFIX="${HOST_CIDR##*/}"
-
-LAN_IP="$(python3 - "$HOST_CIDR" <<'PY'
-import ipaddress, sys
-net = ipaddress.ip_network(sys.argv[1], strict=False)
-host = ipaddress.ip_interface(sys.argv[1]).ip
-prefer = None
-for addr in net.hosts():
-    if int(str(addr).rsplit(".", 1)[-1]) == 13 and addr != host:
-        prefer = addr
-        break
-if prefer is None:
-    for addr in net.hosts():
-        if addr != host:
-            prefer = addr
-            break
-print(prefer)
-PY
-)"
-LAN_CIDR="${LAN_IP}/${PREFIX}"
-GW="$HOST_IP"
+LXC_CIDR="${LXC_IP}/24"
+LXC_GW="${LXC_IP%.*}.1"
 
 echo
-echo "Your Proxmox host is ${HOST_IP} on ${BRIDGE} (${HOST_CIDR})."
-echo "A browser that opens https://${HOST_IP}:8006 is on that subnet."
-echo "192.168.13.13 is a DIFFERENT subnet — this host cannot route to it"
-echo "unless you have a router. The working address will be ${LAN_IP}."
+echo "Topology: Proxmox host ${HOST_IP} (${BRIDGE}). LXC stays ${LXC_IP}/24."
+echo "Adding ${LXC_GW}/24 on the host so it can route to the LXC, and"
+echo "forwarding host port ${PORT} -> ${LXC_IP}:${PORT} so a laptop that"
+echo "already opens https://${HOST_IP}:8006 can use http://${HOST_IP}:${PORT}/"
 echo
+
+# Host becomes the gateway for 192.168.13.0/24 on the same bridge (does not
+# change the host's 192.168.14.1 address).
+if ! ip -4 addr show dev "$BRIDGE" | grep -q "inet ${LXC_GW}/"; then
+  ip addr add "${LXC_GW}/24" dev "$BRIDGE"
+fi
+sysctl -w net.ipv4.ip_forward=1 >/dev/null
+mkdir -p /etc/sysctl.d
+echo 'net.ipv4.ip_forward=1' >/etc/sysctl.d/99-receiptvault-forward.conf
+
+add_fwd() {
+  iptables -t nat -C PREROUTING -p tcp --dport "$PORT" -j DNAT --to-destination "${LXC_IP}:${PORT}" 2>/dev/null \
+    || iptables -t nat -A PREROUTING -p tcp --dport "$PORT" -j DNAT --to-destination "${LXC_IP}:${PORT}"
+  iptables -t nat -C OUTPUT -p tcp --dport "$PORT" -d "$HOST_IP" -j DNAT --to-destination "${LXC_IP}:${PORT}" 2>/dev/null \
+    || iptables -t nat -A OUTPUT -p tcp --dport "$PORT" -d "$HOST_IP" -j DNAT --to-destination "${LXC_IP}:${PORT}"
+  iptables -t nat -C POSTROUTING -d "$LXC_IP" -p tcp --dport "$PORT" -j MASQUERADE 2>/dev/null \
+    || iptables -t nat -A POSTROUTING -d "$LXC_IP" -p tcp --dport "$PORT" -j MASQUERADE
+  iptables -C FORWARD -p tcp -d "$LXC_IP" --dport "$PORT" -j ACCEPT 2>/dev/null \
+    || iptables -A FORWARD -p tcp -d "$LXC_IP" --dport "$PORT" -j ACCEPT
+}
+add_fwd
+
+cat >/usr/local/sbin/receiptvault-forward.sh <<FWD
+#!/bin/bash
+ip addr show dev ${BRIDGE} | grep -q 'inet ${LXC_GW}/' || ip addr add ${LXC_GW}/24 dev ${BRIDGE}
+sysctl -w net.ipv4.ip_forward=1 >/dev/null
+iptables -t nat -C PREROUTING -p tcp --dport ${PORT} -j DNAT --to-destination ${LXC_IP}:${PORT} 2>/dev/null \\
+  || iptables -t nat -A PREROUTING -p tcp --dport ${PORT} -j DNAT --to-destination ${LXC_IP}:${PORT}
+iptables -t nat -C OUTPUT -p tcp --dport ${PORT} -d ${HOST_IP} -j DNAT --to-destination ${LXC_IP}:${PORT} 2>/dev/null \\
+  || iptables -t nat -A OUTPUT -p tcp --dport ${PORT} -d ${HOST_IP} -j DNAT --to-destination ${LXC_IP}:${PORT}
+iptables -t nat -C POSTROUTING -d ${LXC_IP} -p tcp --dport ${PORT} -j MASQUERADE 2>/dev/null \\
+  || iptables -t nat -A POSTROUTING -d ${LXC_IP} -p tcp --dport ${PORT} -j MASQUERADE
+iptables -C FORWARD -p tcp -d ${LXC_IP} --dport ${PORT} -j ACCEPT 2>/dev/null \\
+  || iptables -A FORWARD -p tcp -d ${LXC_IP} --dport ${PORT} -j ACCEPT
+FWD
+chmod 0755 /usr/local/sbin/receiptvault-forward.sh
+cat >/etc/systemd/system/receiptvault-forward.service <<'UNIT'
+[Unit]
+Description=ReceiptVault host forward (.14 laptop -> .13 LXC)
+After=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/receiptvault-forward.sh
+RemainAfterExit=yes
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now receiptvault-forward.service >/dev/null
 
 pct set "$CTID" --firewall 0 >/dev/null || true
-pct set "$CTID" --net0 "name=eth0,bridge=${BRIDGE},firewall=0,ip=${LAN_CIDR},gw=${GW}"
+pct set "$CTID" --net0 "name=eth0,bridge=${BRIDGE},firewall=0,ip=${LXC_CIDR},gw=${LXC_GW}"
 pct set "$CTID" --nameserver 1.1.1.1 >/dev/null || true
 
 echo "Waiting for the container shell..."
@@ -104,9 +136,9 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 
-echo "Applying ${LAN_CIDR} inside the container (gateway ${GW})"
+echo "Applying ${LXC_CIDR} inside the container (gateway ${LXC_GW})"
 pct exec "$CTID" -- env LANG=C.UTF-8 LC_ALL=C.UTF-8 \
-  RV_CIDR="$LAN_CIDR" RV_GATEWAY="$GW" RV_DNS=1.1.1.1 bash -s <<'EOS'
+  RV_CIDR="$LXC_CIDR" RV_GATEWAY="$LXC_GW" RV_DNS=1.1.1.1 bash -s <<'EOS'
 set -euo pipefail
 IFACE=eth0
 CIDR="$RV_CIDR"
@@ -141,7 +173,7 @@ fi
 
 echo "Stopping Caddy and starting ReceiptVault on 0.0.0.0:${PORT}"
 pct exec "$CTID" -- env LANG=C.UTF-8 LC_ALL=C.UTF-8 \
-  RV_IP="$LAN_IP" RV_PORT="$PORT" bash -s <<'EOS'
+  RV_IP="$LXC_IP" RV_PORT="$PORT" bash -s <<'EOS'
 set -euo pipefail
 export PATH="/usr/local/bin:/usr/bin:$PATH"
 APP=/opt/receiptvault
@@ -247,33 +279,29 @@ EOS
 
 echo
 echo "==== Probe from the Proxmox host ===="
-CODE_LAN="$(curl -sS -o /tmp/rv-fix-body -w '%{http_code}' --connect-timeout 5 "http://${LAN_IP}:${PORT}/" || echo 000)"
-echo "http://${LAN_IP}:${PORT}/  -> HTTP ${CODE_LAN}"
+CODE_LXC="$(curl -sS -o /tmp/rv-fix-body -w '%{http_code}' --connect-timeout 5 "http://${LXC_IP}:${PORT}/" || echo 000)"
+echo "http://${LXC_IP}:${PORT}/     -> HTTP ${CODE_LXC}"
+CODE_FWD="$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 5 "http://${HOST_IP}:${PORT}/" || echo 000)"
+echo "http://${HOST_IP}:${PORT}/     -> HTTP ${CODE_FWD}  (forward from host)"
 head -c 200 /tmp/rv-fix-body 2>/dev/null; echo
-CODE_OLD="$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 3 "http://192.168.13.13:${PORT}/" || echo 000)"
-echo "http://192.168.13.13:${PORT}/ -> HTTP ${CODE_OLD} (expected fail if no route)"
 
-if [[ "$CODE_LAN" != "200" ]]; then
+if [[ "$CODE_LXC" != "200" && "$CODE_FWD" != "200" ]]; then
   echo
-  echo "Host could not load the app at ${LAN_IP}:${PORT}."
+  echo "Host could not load the app."
   echo "Container addresses:"
   pct exec "$CTID" -- ip -4 addr
   echo "Container logs:"
   pct exec "$CTID" -- journalctl -u receiptvault -n 40 --no-pager || true
   exit 1
 fi
-if grep -qiE 'Caddy web server|Welcome to Caddy' /tmp/rv-fix-body; then
-  echo "Still the Caddy welcome page. Masking Caddy and retrying the app."
-  pct exec "$CTID" -- bash -lc 'systemctl mask --now caddy; fuser -k 80/tcp 8080/tcp || true; systemctl restart receiptvault'
-  exit 1
-fi
 
 echo
 echo "=============================================="
-echo "  OPEN THIS URL ON YOUR LAPTOP"
+echo "  LXC address is ${LXC_IP} (unchanged)."
 echo
-echo "  http://${LAN_IP}:${PORT}/"
+echo "  From the laptop that already opens Proxmox:"
+echo "    http://${HOST_IP}:${PORT}/"
 echo
-echo "  Do not use http://192.168.13.13 — that network"
-echo "  is not the one your Proxmox UI is on (${HOST_IP})."
+echo "  From anything on the 192.168.13.x network:"
+echo "    http://${LXC_IP}:${PORT}/"
 echo "=============================================="

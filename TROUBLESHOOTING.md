@@ -35,9 +35,7 @@ wget -O /root/fix-receiptvault.sh \
 bash /root/fix-receiptvault.sh
 ```
 
-It finds the container, puts it on the **same subnet as vmbr0** (if Proxmox is `192.168.14.1`, the app becomes `192.168.14.13`), stops Caddy, binds ReceiptVault on port **8082**, and curls the page from the host. Open the URL it prints, for example `http://192.168.14.13:8082/`.
-
-`192.168.13.13` is a different network from `192.168.14.1`. A laptop that loads `https://192.168.14.1:8006` will not reach `.13.13` without a router.
+It keeps the LXC at **192.168.13.13**, adds `192.168.13.1` on the Proxmox host so those two subnets can talk, stops Caddy, binds the app on **8082**, and forwards `http://192.168.14.1:8082/` to the LXC. From the laptop that already opens Proxmox, use **http://192.168.14.1:8082/**. From the 192.168.13.x network, use **http://192.168.13.13:8082/**.
 
 ## App will not start
 
