@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Badge, Card } from '@/components/ui/card'
 import { Input, Label, Textarea } from '@/components/ui/input'
 import { api } from '@/lib/api'
-import { PdfPreview } from '@/components/PdfPreview'
+import { EvidenceViewer } from '@/components/EvidenceViewer'
 
 type Detail = {
   id: string
@@ -13,6 +13,7 @@ type Detail = {
   sha256: string
   bytes: number
   media_type: string
+  kind: string
   financial_year: string | null
   fy_source: string | null
   processing_history: unknown[]
@@ -64,26 +65,16 @@ export function DocumentDetailPage() {
   }, [id, queue, navigate])
 
   if (!doc) return <p>Loading document…</p>
-  const previewUrl = `/api/v1/documents/${doc.id}/content`
 
   return (
     <div>
       <h1 className="font-serif text-3xl text-pine">{doc.filename}</h1>
       <Disclaimer />
-      <p className="mb-3 text-sm text-slate">FY {doc.financial_year || 'unassigned'} ({doc.fy_source || 'none'}) · SHA-256 {doc.sha256} · {doc.bytes} bytes · keys j/k move the review queue</p>
+      <p className="mb-3 text-sm text-slate">FY {doc.financial_year || 'unassigned'} ({doc.fy_source || 'none'}) · {doc.kind} · SHA-256 {doc.sha256} · {doc.bytes} bytes · keys j/k move the review queue</p>
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="min-h-[480px]">
-          {doc.media_type === 'application/pdf' ? (
-            <PdfPreview url={previewUrl} />
-          ) : doc.media_type.startsWith('image/') ? (
-            <img src={previewUrl} alt={doc.filename} className="max-h-[70vh] w-full object-contain" />
-          ) : (
-            <iframe title="Sanitized email" srcDoc="" className="hidden" />
-          )}
-          <div className="mt-3 flex flex-wrap gap-2">
-            <a className="underline" href={previewUrl}>Open original</a>
-            <a className="underline" href={`${previewUrl}?disposition=attachment`}>Download original</a>
-          </div>
+          <h2 className="mb-3 font-serif text-xl">Viewer</h2>
+          <EvidenceViewer evidenceId={doc.id} />
         </Card>
         <div className="space-y-4">
           <Card>

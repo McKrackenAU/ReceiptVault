@@ -90,3 +90,29 @@ def test_chunked_upload_resume(client: TestClient, owner):
     content = client.get(f"/api/v1/documents/{ev}/content", headers={"Range": "bytes=0-9"})
     assert content.status_code == 206
     assert content.content == b"A" * 10
+
+
+def test_email_viewer_preview(client: TestClient, owner):
+    csrf = owner["csrf"]
+    headers = {"X-CSRF-Token": csrf}
+    eml = (
+        b"From: Shop <shop@example.com>\r\nTo: you@hotmail.com\r\n"
+        b"Subject: Tax invoice INV-9\r\nMIME-Version: 1.0\r\n"
+        b"Content-Type: text/html; charset=utf-8\r\n\r\n"
+        b"<p>Please see attached</p><script>alert(1)</script>"
+    )
+    up = client.post("/api/v1/documents/upload", files={"file": ("invoice.eml", eml, "message/rfc822")}, headers=headers)
+    assert up.status_code == 200
+    ev = up.json()["evidence_id"]
+    detail = client.get(f"/api/v1/documents/{ev}")
+    assert detail.status_code == 200
+    assert "related" in detail.json()
+    preview = client.get(f"/api/v1/documents/{ev}/preview")
+    assert preview.status_code == 200
+    body = preview.json()
+    assert body["viewer"] == "email"
+    assert body["email"]["subject"] == "Tax invoice INV-9"
+    page = client.get(f"/api/v1/documents/{ev}/html")
+    assert page.status_code == 200
+    assert b"Please see attached" in page.content
+    assert b"<script" not in page.content.lower()

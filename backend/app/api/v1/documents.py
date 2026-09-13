@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import Response
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -12,8 +12,9 @@ from app.api.deps import client_ip, current_user, require_csrf, settings_dep
 from app.config import Settings
 from app.db import get_db
 from app.errors import AppError
-from app.models import EvidenceObject, ExtractedDocument, ExtractedField, FolderMembership, LineItem, User, VirtualFolder
+from app.models import EvidenceObject, EvidenceRelationship, ExtractedDocument, ExtractedField, FolderMembership, LineItem, User, VirtualFolder
 from app.services.audit import record_audit
+from app.services.email_view import is_email_media, parse_email_view
 from app.services.evidence import read_evidence_bytes, soft_delete
 from app.services.html_sanitize import sanitize_email_html
 from app.services.ingest import ingest_bytes
@@ -89,6 +90,7 @@ def get_document(evidence_id: str, user: User = Depends(current_user), db: Sessi
             for f in fields
         ],
         "line_items": [_line_payload(line) for line in lines],
+        "related": _related(db, obj),
     }
 
 
@@ -116,11 +118,58 @@ def download_content(evidence_id: str, request: Request, disposition: str = "inl
     return Response(content=data, media_type=obj.media_type, headers=headers)
 
 
+@router.get("/documents/{evidence_id}/preview")
+def document_preview(evidence_id: str, user: User = Depends(current_user), db: Session = Depends(get_db), settings: Settings = Depends(settings_dep)):
+    obj = _get(db, evidence_id)
+    data = read_evidence_bytes(settings, obj)
+    related = _related(db, obj)
+    payload = {
+        "id": str(obj.id),
+        "filename": obj.display_filename,
+        "media_type": obj.media_type,
+        "kind": obj.kind,
+        "bytes": obj.byte_count,
+        "viewer": _viewer_kind(obj),
+        "related": related,
+        "email": None,
+        "text": None,
+    }
+    if is_email_media(obj.media_type, obj.display_filename):
+        payload["email"] = parse_email_view(data)
+    elif obj.media_type.startswith("text/") or obj.media_type == "text/html":
+        raw = data.decode("utf-8", "ignore")
+        payload["text"] = sanitize_email_html(raw) if obj.media_type == "text/html" else raw
+    return payload
+
+
 @router.get("/documents/{evidence_id}/html")
 def sanitized_html(evidence_id: str, user: User = Depends(current_user), db: Session = Depends(get_db), settings: Settings = Depends(settings_dep)):
     obj = _get(db, evidence_id)
-    raw = read_evidence_bytes(settings, obj).decode("utf-8", "ignore")
-    return {"html": sanitize_email_html(raw)}
+    data = read_evidence_bytes(settings, obj)
+    if is_email_media(obj.media_type, obj.display_filename):
+        body = parse_email_view(data)["html"]
+    elif obj.media_type == "text/html":
+        body = sanitize_email_html(data.decode("utf-8", "ignore"))
+    else:
+        import html as html_mod
+
+        body = f"<pre>{html_mod.escape(data.decode('utf-8', 'ignore'))}</pre>"
+    page = (
+        "<!doctype html><html><head><meta charset='utf-8'>"
+        "<meta name='referrer' content='no-referrer'>"
+        "<style>body{font-family:system-ui,sans-serif;margin:1rem;color:#1a1a1a}"
+        "pre{white-space:pre-wrap;word-break:break-word}</style>"
+        "</head><body>"
+        f"{body}"
+        "</body></html>"
+    )
+    return HTMLResponse(
+        page,
+        headers={
+            "Content-Security-Policy": "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'none'; frame-ancestors 'self'",
+            "X-Frame-Options": "SAMEORIGIN",
+        },
+    )
 
 
 @router.post("/documents/upload")
@@ -192,6 +241,57 @@ def patch_field(
 def list_folders(user: User = Depends(current_user), db: Session = Depends(get_db)):
     folders = db.query(VirtualFolder).order_by(VirtualFolder.path).all()
     return {"items": [{"id": str(f.id), "path": f.path, "label": f.label, "parent_path": f.parent_path} for f in folders]}
+
+
+def _viewer_kind(obj: EvidenceObject) -> str:
+    media = obj.media_type or ""
+    if is_email_media(media, obj.display_filename):
+        return "email"
+    if media == "application/pdf":
+        return "pdf"
+    if media.startswith("image/"):
+        return "image"
+    if media == "text/html":
+        return "html"
+    if media.startswith("text/"):
+        return "text"
+    return "file"
+
+
+def _related(db: Session, obj: EvidenceObject) -> dict:
+    children = (
+        db.query(EvidenceObject)
+        .filter(EvidenceObject.parent_id == obj.id, EvidenceObject.deleted_at.is_(None))
+        .all()
+    )
+    rel_ids = [
+        r.child_id
+        for r in db.query(EvidenceRelationship).filter(EvidenceRelationship.parent_id == obj.id).all()
+    ]
+    extra = db.query(EvidenceObject).filter(EvidenceObject.id.in_(rel_ids), EvidenceObject.deleted_at.is_(None)).all() if rel_ids else []
+    seen = {c.id for c in children}
+    for item in extra:
+        if item.id not in seen:
+            children.append(item)
+            seen.add(item.id)
+    parent = db.get(EvidenceObject, obj.parent_id) if obj.parent_id else None
+    if parent and parent.deleted_at:
+        parent = None
+    return {
+        "parent": _related_item(parent) if parent else None,
+        "attachments": [_related_item(c) for c in children],
+    }
+
+
+def _related_item(obj: EvidenceObject) -> dict:
+    return {
+        "id": str(obj.id),
+        "filename": obj.display_filename,
+        "media_type": obj.media_type,
+        "kind": obj.kind,
+        "bytes": obj.byte_count,
+        "viewer": _viewer_kind(obj),
+    }
 
 
 def _get(db: Session, evidence_id: str) -> EvidenceObject:

@@ -9,6 +9,7 @@ from app.services.candidates import detect_candidate
 from app.services.classify import classify_line_item, never_fabricate_purpose
 from app.services.fy import assign_financial_year, financial_year_for
 from app.services.money import parse_money
+from app.services.email_view import parse_email_view
 from app.services.oauth import pkce_pair
 from app.services.parse import validate_arithmetic
 from app.services.paths import UnsafePathError, safe_relpath, resolve_under
@@ -88,6 +89,24 @@ def test_arithmetic_flags():
     )
     assert "line_totals_mismatch_subtotal" in flags
     assert "subtotal_tax_mismatch_total" in flags
+
+
+def test_parse_email_view_sanitizes_html():
+    raw = (
+        b"From: Shop <shop@example.com>\r\n"
+        b"To: you@hotmail.com\r\n"
+        b"Subject: Tax invoice INV-9\r\n"
+        b"Date: Fri, 12 Jul 2024 10:00:00 +1000\r\n"
+        b"MIME-Version: 1.0\r\n"
+        b"Content-Type: text/html; charset=utf-8\r\n"
+        b"\r\n"
+        b"<p>Invoice $22</p><script>alert(1)</script>"
+    )
+    view = parse_email_view(raw)
+    assert view["subject"] == "Tax invoice INV-9"
+    assert view["from"].startswith("Shop")
+    assert "Invoice $22" in view["html"]
+    assert "script" not in view["html"].lower()
 
 
 def test_upsert_env_key(tmp_path, monkeypatch):

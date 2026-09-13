@@ -7,7 +7,7 @@ import { Input, Label } from '@/components/ui/input'
 import { api } from '@/lib/api'
 import { uploadChunked } from '@/lib/upload'
 
-type Doc = { id: string; filename: string; financial_year: string | null; merchant: string | null; total: string | null; currency: string | null; kind: string }
+type Doc = { id: string; filename: string; financial_year: string | null; merchant: string | null; total: string | null; currency: string | null; kind: string; media_type: string }
 
 export function DocumentsPage() {
   const [items, setItems] = useState<Doc[]>([])
@@ -94,6 +94,7 @@ export function DocumentsPage() {
               <p className="font-semibold">{d.filename}</p>
               <p className="text-sm text-slate">{d.merchant || 'Unknown supplier'} · {d.financial_year || 'FY unassigned'}</p>
               <p className="text-sm">{d.total ? `${d.currency} ${d.total}` : 'No total yet'} · {d.kind}</p>
+              <p className="mt-1 text-xs text-slate">Open to view the email, PDF, image, or attachment</p>
             </Card>
           </Link>
         ))}
