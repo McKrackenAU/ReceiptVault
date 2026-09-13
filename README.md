@@ -48,15 +48,26 @@ cd ../frontend && npm test || true
 
 ## Production (Debian / Proxmox LXC)
 
-See `deploy/install-receiptvault.sh`. Safer sequence:
+Full steps: [`docs/PROXMOX_INSTALL.md`](docs/PROXMOX_INSTALL.md).
 
-1. Copy the script to the Proxmox host
-2. Read it
-3. `bash install-receiptvault.sh` as root
+On the Proxmox host, as root — after the repo is on GitHub — either:
 
-Do not put mailbox passwords or tunnel tokens on the curl command line. The installer can accept a Cloudflare token interactively.
+```bash
+wget -O /root/install-receiptvault.sh \
+  https://raw.githubusercontent.com/<YOUR_GITHUB_USER>/receiptvault/main/deploy/install-receiptvault.sh
+less /root/install-receiptvault.sh
+bash /root/install-receiptvault.sh
+```
 
-After install, open the LAN URL, create the owner, set timezone, confirm evidence storage, add Entra credentials (or keep mock off in production), connect three inboxes, choose audit years, and start the first historical scan. No source edits are required.
+or the helper-script one-liner (inspect the URL first; never put secrets on this line):
+
+```bash
+bash -c "$(wget -qLO - https://raw.githubusercontent.com/<YOUR_GITHUB_USER>/receiptvault/main/deploy/install-receiptvault.sh)"
+```
+
+The helper creates an unprivileged Debian 13 LXC (4 vCPU / 8 GB / 32 GB by default), installs PostgreSQL, Redis, Caddy, OCR, and ReceiptVault, then prints `http://<lxc-ip>:8080`. Create the owner there. No source edits.
+
+Do not put mailbox passwords or tunnel tokens on the wget line. Cloudflare tokens are entered in a password box if you choose that option.
 
 ## Operator commands
 
