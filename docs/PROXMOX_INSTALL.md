@@ -85,7 +85,7 @@ wget --no-cache -O /root/fix-receiptvault.sh \
 bash /root/fix-receiptvault.sh
 ```
 
-The script must print `access fix 1.2.0`. It **purges Caddy** and binds ReceiptVault on port 80.
+The script must print `access fix 1.3.0`. It takes `192.168.13.13` off any other LXC (and off the host), purges Caddy there, and binds ReceiptVault on port 80.
 
 Then open **http://192.168.13.13/** (or the IP you entered). The LXC uses the gateway you entered for internet (mailbox scan).
 

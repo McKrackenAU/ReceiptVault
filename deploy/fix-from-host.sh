@@ -6,7 +6,7 @@
 #   bash /root/fix-receiptvault.sh
 #
 # Purges Caddy and puts ReceiptVault on http://<lxc-ip>/
-echo "ReceiptVault access fix 1.2.0 — purge Caddy, app binds :80"
+echo "ReceiptVault access fix 1.3.0 — take the LAN IP, remove every Caddy on it, bind the app on :80"
 set -euo pipefail
 export LANG=C.UTF-8 LC_ALL=C.UTF-8 DEBIAN_FRONTEND=noninteractive
 
@@ -56,6 +56,60 @@ if [[ -z "$CTID" ]]; then
 fi
 
 echo "CT ${CTID}  ->  http://${LXC_IP}/   gateway ${LXC_GW}  (${LXC_CIDR} on ${BRIDGE})"
+
+nuke_caddy_guest() {
+  local id="$1"
+  pct status "$id" 2>/dev/null | grep -q running || return 0
+  echo "  purging Caddy in CT ${id}"
+  pct exec "$id" -- env DEBIAN_FRONTEND=noninteractive bash -lc '
+    systemctl disable --now caddy.service caddy.socket >/dev/null 2>&1 || true
+    systemctl mask caddy.service caddy.socket >/dev/null 2>&1 || true
+    pkill -9 caddy >/dev/null 2>&1 || true
+    fuser -k 80/tcp >/dev/null 2>&1 || true
+    apt-get purge -y caddy >/dev/null 2>&1 || dpkg --purge caddy >/dev/null 2>&1 || true
+    rm -rf /etc/caddy /usr/share/caddy /var/lib/caddy
+    rm -f /usr/bin/caddy /usr/local/bin/caddy
+    apt-mark hold caddy >/dev/null 2>&1 || true
+  ' || true
+}
+
+echo "Looking for anything else that already owns ${LXC_IP} or is running Caddy"
+if ip -4 addr show | grep -q "inet ${LXC_IP}/"; then
+  echo "  this Proxmox host has ${LXC_IP} — removing that address from the host"
+  ip -4 addr show | awk '/inet '"${LXC_IP}"'\// {print $2}' | while read -r cidr; do
+    iface="$(ip -4 -o addr show | awk -v c="$cidr" '$4==c {print $2; exit}')"
+    [[ -n "$iface" ]] && ip addr del "$cidr" dev "$iface" || true
+  done
+fi
+systemctl disable --now caddy.service caddy.socket >/dev/null 2>&1 || true
+pkill -9 caddy >/dev/null 2>&1 || true
+
+while read -r id name; do
+  [[ -z "$id" ]] && continue
+  conf="/etc/pve/lxc/${id}.conf"
+  has=0
+  if [[ -f "$conf" ]] && grep -q "${LXC_IP}" "$conf"; then
+    has=1
+  fi
+  if pct status "$id" 2>/dev/null | grep -q running; then
+    if pct exec "$id" -- bash -lc "ip -4 addr show | grep -q 'inet ${LXC_IP}/'" 2>/dev/null; then
+      has=1
+    fi
+    if pct exec "$id" -- bash -lc 'pgrep -x caddy >/dev/null || command -v caddy >/dev/null' 2>/dev/null; then
+      echo "  CT ${id} (${name}) has a Caddy binary/process"
+      nuke_caddy_guest "$id"
+    fi
+  fi
+  if [[ "$has" -eq 1 && "$id" != "$CTID" ]]; then
+    echo "  CT ${id} (${name}) is configured with ${LXC_IP} — taking that address off it"
+    nuke_caddy_guest "$id"
+    net0="$(pct config "$id" 2>/dev/null | sed -n 's/^net0: //p' || true)"
+    if [[ -n "$net0" && "$net0" == *"${LXC_IP}"* ]]; then
+      new="$(printf '%s\n' "$net0" | sed -E "s/ip=${LXC_IP}\/[0-9]+/ip=dhcp/")"
+      pct set "$id" --net0 "$new" || true
+    fi
+  fi
+done < <(pct list | awk 'NR>1 {print $1, $3}')
 
 systemctl disable --now receiptvault-forward.service >/dev/null 2>&1 || true
 rm -f /etc/systemd/system/receiptvault-forward.service /usr/local/sbin/receiptvault-forward.sh

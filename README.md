@@ -77,7 +77,7 @@ wget --no-cache -O /root/fix-receiptvault.sh \
 bash /root/fix-receiptvault.sh
 ```
 
-The first line of output must say `access fix 1.2.0`. Then open **http://192.168.13.13/** and hard-refresh (Ctrl+Shift+R).
+The first line of output must say `access fix 1.3.0`. Then open **http://192.168.13.13/** and hard-refresh (Ctrl+Shift+R).
 
 ## Operator commands
 

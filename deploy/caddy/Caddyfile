@@ -1,5 +1,0 @@
-# Unused for LAN access. ReceiptVault binds its own port (default 8082).
-# Kept only if you later put Cloudflare in front of the LXC.
-:8080 {
-	reverse_proxy 127.0.0.1:8082
-}

@@ -12,7 +12,7 @@
 #   RECEIPTVAULT_REPO=https://github.com/McKrackenAU/ReceiptVault.git bash /root/install-receiptvault.sh
 set -euo pipefail
 
-VERSION="1.2.0"
+VERSION="1.3.0"
 APP="ReceiptVault"
 REPO_URL="${RECEIPTVAULT_REPO:-https://github.com/McKrackenAU/ReceiptVault.git}"
 REPO_REF="${RECEIPTVAULT_REF:-main}"
@@ -235,8 +235,47 @@ ask_static_network() {
   DNS="$dns"
 }
 
+# If another LXC already has this IPv4 (a leftover Caddy CT is the usual case),
+# take the address off it so the browser hits ReceiptVault, not the welcome page.
+claim_static_ip_from_others() {
+  local ip="$1" keep="${2:-}"
+  local id name conf net0 new
+  [[ -z "$ip" ]] && return 0
+  if ip -4 addr show | grep -q "inet ${ip}/"; then
+    echo "Removing ${ip} from the Proxmox host so the LXC can own it." | tee -a "$LOG"
+    ip -4 -o addr show | awk -v i="$ip" '$4 ~ "^"i"/" {print $2, $4}' | while read -r iface cidr; do
+      ip addr del "$cidr" dev "$iface" || true
+    done
+  fi
+  systemctl disable --now caddy.service caddy.socket >/dev/null 2>&1 || true
+  pkill -9 caddy >/dev/null 2>&1 || true
+  while read -r id name; do
+    [[ -z "$id" || "$id" == "$keep" ]] && continue
+    conf="/etc/pve/lxc/${id}.conf"
+    if [[ -f "$conf" ]] && grep -q "$ip" "$conf"; then
+      echo "CT ${id} (${name}) already has ${ip}. Removing Caddy and that address." | tee -a "$LOG"
+      if pct status "$id" 2>/dev/null | grep -q running; then
+        pct exec "$id" -- env DEBIAN_FRONTEND=noninteractive bash -lc '
+          systemctl disable --now caddy.service caddy.socket >/dev/null 2>&1 || true
+          systemctl mask caddy.service >/dev/null 2>&1 || true
+          pkill -9 caddy >/dev/null 2>&1 || true
+          fuser -k 80/tcp >/dev/null 2>&1 || true
+          apt-get purge -y caddy >/dev/null 2>&1 || true
+          rm -rf /etc/caddy /usr/share/caddy
+        ' >>"$LOG" 2>&1 || true
+      fi
+      net0="$(pct config "$id" 2>/dev/null | sed -n 's/^net0: //p' || true)"
+      if [[ -n "$net0" && "$net0" == *"${ip}"* ]]; then
+        new="$(printf '%s\n' "$net0" | sed -E "s/ip=${ip}\/[0-9]+/ip=dhcp/")"
+        pct set "$id" --net0 "$new" >>"$LOG" 2>&1 || true
+      fi
+    fi
+  done < <(pct list | awk 'NR>1 {print $1, $3}')
+}
+
 apply_ct_static_ip() {
   local bridge="$1"
+  claim_static_ip_from_others "$STATIC_IP" "$CTID"
   pct set "$CTID" --net0 "$(net0_line "$bridge" "$STATIC_CIDR" "$GW")"
   if [[ -n "${DNS:-}" ]]; then
     pct set "$CTID" --nameserver "$DNS" || true
@@ -539,6 +578,22 @@ ENVEOF
   purge_guest_caddy || true
   pct exec "$CTID" -- systemctl restart receiptvault >>"$LOG" 2>&1 || true
   pct exec "$CTID" -- bash -lc "echo ${MARKER_KEY}=${VERSION} > /opt/receiptvault/.installed"
+  if [[ -n "${ACCESS_IP:-}" ]]; then
+    claim_static_ip_from_others "$ACCESS_IP" "$CTID"
+    page="$(curl -sS --connect-timeout 5 "http://${ACCESS_IP}/" || true)"
+    if echo "$page" | grep -qi 'Your web server is working\|Congratulations'; then
+      echo "http://${ACCESS_IP}/ is still Caddy. Taking the IP again and rechecking." | tee -a "$LOG"
+      claim_static_ip_from_others "$ACCESS_IP" "$CTID"
+      pct exec "$CTID" -- bash /opt/receiptvault/deploy/purge-caddy.sh >>"$LOG" 2>&1 || true
+      pct exec "$CTID" -- systemctl restart receiptvault >>"$LOG" 2>&1 || true
+      sleep 2
+      page="$(curl -sS --connect-timeout 5 "http://${ACCESS_IP}/" || true)"
+    fi
+    if echo "$page" | grep -qi 'Your web server is working\|Congratulations'; then
+      echo "REFUSING to mark the install OK: http://${ACCESS_IP}/ is still the Caddy welcome page." | tee -a "$LOG"
+      exit 1
+    fi
+  fi
   echo 100
   echo OK >"$STATUS"
 ) | gauge "Installing ${APP}" 0
