@@ -61,7 +61,7 @@ if [[ -f /opt/receiptvault/deploy/guest-network.sh ]]; then
     bash /opt/receiptvault/deploy/guest-network.sh || true
 else
   ip link set eth0 up || true
-  if ! ip -4 addr show dev eth0 2>/dev/null | grep -q "inet ${IP}/"; then
+  if ! ip -4 -o addr show dev eth0 2>/dev/null | awk '{print $4}' | grep -qx "$CIDR"; then
     ip addr add "$CIDR" dev eth0 2>/dev/null || true
   fi
   ip route replace default via "$GATEWAY" 2>/dev/null || true

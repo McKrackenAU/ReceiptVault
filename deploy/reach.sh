@@ -59,10 +59,9 @@ echo "CT ${CTID}  ${LXC_CIDR}  gateway ${GW}"
 pct set "$CTID" --net0 "name=eth0,bridge=${BRIDGE},firewall=0,ip=${LXC_CIDR},gw=${GW}"
 pct set "$CTID" --nameserver "$DNS" || true
 
-if ! pct exec "$CTID" -- test -f /opt/receiptvault/deploy/guest-network.sh; then
-  echo "App files are missing in the CT. Re-run Default install."
-  exit 1
-fi
+pct exec "$CTID" -- mkdir -p /opt/receiptvault/deploy
+pct push "$CTID" "${SCRIPT_DIR}/guest-network.sh" /opt/receiptvault/deploy/guest-network.sh
+pct exec "$CTID" -- chmod 0755 /opt/receiptvault/deploy/guest-network.sh
 
 pct exec "$CTID" -- env LANG=C.UTF-8 LC_ALL=C.UTF-8 \
   RV_CIDR="$LXC_CIDR" RV_GATEWAY="$GW" RV_DNS="$DNS" RV_IFACE=eth0 \

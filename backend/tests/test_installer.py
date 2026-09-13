@@ -41,6 +41,12 @@ def test_bootstrap_and_network_scripts_syntax():
     _bash_n(DEPLOY / "lxc-bootstrap.sh")
     _bash_n(DEPLOY / "guest-network.sh")
     _bash_n(DEPLOY / "lib-network.sh")
+    guest_net = (DEPLOY / "guest-network.sh").read_text()
+    assert "ifdown" not in guest_net
+    assert "grep -qx" in guest_net
+    installer = (DEPLOY / "install-receiptvault.sh").read_text()
+    assert 'grep -q "inet ${ADDR}/"' not in installer
+    assert 'grep -q "inet ${STATIC_IP}/"' not in installer
 
 
 def _fn(expr: str) -> str:

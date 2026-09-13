@@ -93,7 +93,7 @@ IFACE="${RV_IFACE:-eth0}"
 CIDR="$RV_CIDR"
 GATEWAY="${RV_GATEWAY:-}"
 DNS="${RV_DNS:-1.1.1.1}"
-[[ "$CIDR" == */* ]] || CIDR="${CIDR}/${DEFAULT_PREFIX:-20}"
+[[ "$CIDR" == */* ]] || CIDR="${CIDR}/20"
 ADDR="${CIDR%%/*}"
 mkdir -p /etc/network /etc/sysctl.d
 cat >/etc/network/interfaces <<EOF
@@ -110,14 +110,19 @@ printf 'nameserver %s\n' "$DNS" >/etc/resolv.conf
 sysctl -w net.ipv4.ip_unprivileged_port_start=0 >/dev/null 2>&1 || true
 echo 'net.ipv4.ip_unprivileged_port_start=0' >/etc/sysctl.d/20-receiptvault-ports.conf
 ip link set "$IFACE" up || true
-if ! ip -4 addr show dev "$IFACE" | grep -q "inet ${ADDR}/"; then
-  ip addr flush dev "$IFACE" 2>/dev/null || true
+current="$(ip -4 -o addr show dev "$IFACE" 2>/dev/null | awk '{print $4}')"
+if ! printf '%s\n' "$current" | grep -qx "$CIDR"; then
+  while read -r old; do
+    [[ -z "$old" ]] && continue
+    [[ "$old" == "$CIDR" ]] && continue
+    [[ "$old" == "${ADDR}/"* ]] && ip addr del "$old" dev "$IFACE" 2>/dev/null || true
+  done <<< "$current"
   ip addr add "$CIDR" dev "$IFACE"
 fi
 if [[ -n "$GATEWAY" ]]; then
   ip route replace default via "$GATEWAY" dev "$IFACE" 2>/dev/null || true
 fi
-ip -4 addr show dev "$IFACE" | grep -q "inet ${ADDR}/"
+ip -4 -o addr show dev "$IFACE" | awk '{print $4}' | grep -qx "$CIDR"
 EOS
 }
 
@@ -209,8 +214,8 @@ apply_ct_static_ip() {
     pct set "$CTID" --nameserver "$DNS" || true
   fi
   apply_guest_network "$STATIC_CIDR" "$GW" "$DNS"
-  if ! pct exec "$CTID" -- ip -4 addr show | grep -q "inet ${STATIC_IP}/"; then
-    echo "The container does not have ${STATIC_IP} on eth0. See ${LOG}." | tee -a "$LOG"
+  if ! pct exec "$CTID" -- ip -4 -o addr show | awk '{print $4}' | grep -qx "$STATIC_CIDR"; then
+    echo "The container does not have ${STATIC_CIDR} on eth0. See ${LOG}." | tee -a "$LOG"
     return 1
   fi
   return 0
