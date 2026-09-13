@@ -2,21 +2,22 @@
 
 ## Open the app
 
-The installer asks for the LXC IPv4 and the router/gateway. After that you open:
-
-**http://&lt;the-ip-you-typed&gt;/**
-
-Typical values: LXC `192.168.13.13`, router `192.168.1.1` → **http://192.168.13.13/**
-
-If that is not working, or Settings still says **1.0.0**, type these **three short lines** on the Proxmox host:
+On the Proxmox host:
 
 ```bash
-cd /root
-git clone --depth 1 https://github.com/McKrackenAU/ReceiptVault.git
-bash /root/ReceiptVault/deploy/fix-from-host.sh
+cd /root/ReceiptVault
+git pull
+bash deploy/install-receiptvault.sh
 ```
 
-If `git` is missing, first type `apt-get install -y git`. You should see git clone progress, then `ReceiptVault 1.5.0`. After it finishes, hard-refresh the browser (Ctrl+Shift+R). Settings must show **1.5.0**. Later updates: type `receiptvault-update` on the host, or Settings → **Update from GitHub**.
+If `/root/ReceiptVault` is missing:
+
+```bash
+git clone --depth 1 https://github.com/McKrackenAU/ReceiptVault.git /root/ReceiptVault
+bash /root/ReceiptVault/deploy/install-receiptvault.sh
+```
+
+Choose **Update** for an existing CT. When it finishes, open **http://192.168.14.1:8484/** on the desktop (same IP as the Proxmox UI, port 8484). Do not open `192.168.13.13`. Hard-refresh (Ctrl+Shift+R). Settings must show **1.5.1**.
 
 ## App will not start
 
@@ -35,7 +36,8 @@ Setup is one-time. Reset the owner with `receiptvault reset-password` rather tha
 - Personal Hotmail/Outlook need the `common` authority.
 - Tenant policy may block unverified apps; an admin may need to allow `Mail.Read`.
 - For local tests set `RECEIPTVAULT_GRAPH_MOCK=true` and use the three mock identities.
-- The LXC must reach the internet via the gateway you entered (typically **192.168.1.1**).
+- Use **Sign in with Microsoft** (device code). In Entra, enable **Allow public client flows**.
+- The LXC must reach the internet via the same gateway as Proxmox (typically **192.168.14.1**).
 
 ## Scan stuck or duplicated
 

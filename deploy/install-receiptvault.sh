@@ -1,15 +1,9 @@
 #!/usr/bin/env bash
 # ReceiptVault — Proxmox helper-script installer
-# Safe sequence (recommended):
-#   wget -O /root/install-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/install-receiptvault.sh
-#   less /root/install-receiptvault.sh
-#   bash /root/install-receiptvault.sh
-#
-# Convenient one-liner (inspect the URL first; never put tokens on this line):
-#   bash -c "$(wget -qLO - https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/install-receiptvault.sh)"
-#
-# Override the Git source if needed:
-#   RECEIPTVAULT_REPO=https://github.com/McKrackenAU/ReceiptVault.git bash /root/install-receiptvault.sh
+# On the Proxmox host:
+#   cd /root/ReceiptVault
+#   git pull
+#   bash deploy/install-receiptvault.sh
 set -euo pipefail
 
 VERSION="1.5.1"
@@ -250,7 +244,7 @@ update-locale LANG=C.UTF-8 LC_ALL=C.UTF-8 >/dev/null 2>&1 || true'
 }
 
 ask_static_network() {
-  local raw cidr gw dns
+  local raw cidr gw dns lan rest
   local suggest_ip="192.168.14.13" suggest_gw="192.168.14.1"
   if lan="$(detect_lan_on_bridge "${1:-vmbr0}" 2>/dev/null)"; then
     suggest_ip="${lan%% *}"
@@ -352,7 +346,7 @@ menu() { $UI --title "$APP" --menu "$1" 22 78 12 "${@:2}" 3>&1 1>&2 2>&3; }
 msg() { $UI --title "$APP" --msgbox "$1" 18 78; }
 gauge() { $UI --title "$APP" --gauge "$1" 10 74 "$2"; }
 
-$UI --title "$APP $VERSION" --msgbox "Installs an unprivileged Debian LXC and ${APP}.\n\nYou enter the LXC IPv4 and the router/gateway.\nAfter install, open http://<that-ip>/  (port 80).\n\nSource: ${REPO_URL}" 16 78
+$UI --title "$APP $VERSION" --msgbox "Installs an unprivileged Debian LXC and ${APP}.\n\nChoose Update for an existing CT, or Default install for a new one.\nWhen it finishes, open http://<this-Proxmox-IP>:8484/\n(same IP as the Proxmox UI, port 8484 — not 192.168.13.13).\n\nSource: ${REPO_URL}" 16 78
 
 MODE="$(menu "What do you want to do?" \
   default "Default install (recommended)" \
@@ -386,8 +380,8 @@ if [[ "$MODE" == "repair" || "$MODE" == "update" || "$MODE" == "backup" || "$MOD
       exit 0
       ;;
     repair)
-      FIX_IP="$(ask "LAN IPv4 for this CT" "192.168.13.13")"
-      FIX_GW="$(ask "Router / gateway" "192.168.1.1")"
+      FIX_IP="$(ask "LAN IPv4 for this CT" "192.168.14.13")"
+      FIX_GW="$(ask "Router / gateway" "192.168.14.1")"
       if pct exec "$CTID" -- test -f /opt/receiptvault/deploy/make-reachable.sh; then
         pct exec "$CTID" -- env RV_GATEWAY="$FIX_GW" bash /opt/receiptvault/deploy/make-reachable.sh "$FIX_IP" 80
       else
@@ -411,33 +405,39 @@ if [[ "$MODE" == "repair" || "$MODE" == "update" || "$MODE" == "backup" || "$MOD
       exit 0
       ;;
     update)
-      TGZ=/tmp/receiptvault-main.tgz
-      echo "Downloading ${REPO_URL} (${REPO_REF}) on the Proxmox host"
-      wget -4 --timeout=40 --tries=3 -nv --no-cache -O "$TGZ" "https://github.com/McKrackenAU/ReceiptVault/archive/refs/heads/${REPO_REF}.tar.gz"
-      if ! gzip -t "$TGZ" 2>/dev/null; then
-        msg "GitHub download failed. The LXC has no git repo, so updates must come from the host."
-        exit 1
-      fi
-      pct push "$CTID" "$TGZ" /tmp/receiptvault-main.tgz
-      pct exec "$CTID" -- env LANG=C.UTF-8 LC_ALL=C.UTF-8 bash -s <<'EOS'
+      if [[ -n "${LOCAL_SOURCE:-}" ]]; then
+        echo "Copying local GitHub tree ${LOCAL_SOURCE} into CT ${CTID}"
+        tar -C "$LOCAL_SOURCE" --exclude='.git' --exclude='node_modules' --exclude='frontend/node_modules' --exclude='.venv' --exclude='backend/.venv' --exclude='var' -cf - . \
+          | pct exec "$CTID" -- tar -C /opt/receiptvault -xf -
+      else
+        TGZ=/tmp/receiptvault-main.tgz
+        wget -4 --timeout=40 --tries=3 -nv --no-cache -O "$TGZ" "https://github.com/McKrackenAU/ReceiptVault/archive/refs/heads/${REPO_REF}.tar.gz"
+        pct push "$CTID" "$TGZ" /tmp/receiptvault-main.tgz
+        pct exec "$CTID" -- env LANG=C.UTF-8 LC_ALL=C.UTF-8 bash -s <<'EOS'
 set -euo pipefail
-APP=/opt/receiptvault
-rm -rf /tmp/ReceiptVault-main
 tar -xzf /tmp/receiptvault-main.tgz -C /tmp
 SRC="$(find /tmp -maxdepth 1 -type d -name 'ReceiptVault-*' | head -n 1)"
-test -d "$SRC/backend"
-cp -a "$SRC/." "$APP/"
+cp -a "$SRC/." /opt/receiptvault/
 rm -rf "$SRC" /tmp/receiptvault-main.tgz
-ENV=/etc/receiptvault/receiptvault.env
-if [[ -f "$ENV" ]]; then
-  grep -q '^RECEIPTVAULT_APP_VERSION=' "$ENV" && sed -i 's|^RECEIPTVAULT_APP_VERSION=.*|RECEIPTVAULT_APP_VERSION=1.5.1|' "$ENV" || echo 'RECEIPTVAULT_APP_VERSION=1.5.1' >>"$ENV"
-fi
 EOS
+      fi
+      pct exec "$CTID" -- bash -lc "ENV=/etc/receiptvault/receiptvault.env; grep -q '^RECEIPTVAULT_APP_VERSION=' \"\$ENV\" && sed -i 's|^RECEIPTVAULT_APP_VERSION=.*|RECEIPTVAULT_APP_VERSION=${VERSION}|' \"\$ENV\" || echo RECEIPTVAULT_APP_VERSION=${VERSION} >>\"\$ENV\""
       if ! pct exec "$CTID" -- bash /opt/receiptvault/deploy/lxc-bootstrap.sh; then
-        msg "Update failed health/bootstrap. See /var/tmp/receiptvault-install.log"
+        msg "Update failed. See /var/tmp/receiptvault-install.log"
         exit 1
       fi
-      msg "Updated CT $CTID to ${VERSION}. Hard-refresh http://192.168.13.13/ — Settings must show ${VERSION}."
+      if lan="$(detect_lan_on_bridge vmbr0 2>/dev/null)"; then
+        STATIC_IP="${lan%% *}"
+        rest="${lan#* }"
+        GW="${rest%% *}"
+        STATIC_CIDR="${STATIC_IP}/24"
+        apply_ct_static_ip vmbr0 || true
+      fi
+      if [[ -f "${SCRIPT_DIR}/publish-on-host.sh" ]]; then
+        bash "${SCRIPT_DIR}/publish-on-host.sh" "$CTID" || true
+      fi
+      HOST_IP="$(ip -4 -o addr show dev vmbr0 2>/dev/null | awk '{print $4; exit}' | cut -d/ -f1)"
+      msg "Updated CT $CTID.\n\nOpen this (same IP as the Proxmox UI):\n\n  http://${HOST_IP:-192.168.14.1}:8484/"
       exit 0
       ;;
     backup)
@@ -655,6 +655,10 @@ ENVEOF
       fi
     fi
   fi
+  echo 96
+  if [[ -f "${SCRIPT_DIR}/publish-on-host.sh" ]]; then
+    bash "${SCRIPT_DIR}/publish-on-host.sh" "$CTID" >>"$LOG" 2>&1 || true
+  fi
   echo 100
   echo OK >"$STATUS"
 ) | gauge "Installing ${APP}" 0
@@ -694,7 +698,9 @@ systemctl enable --now cloudflared"
   fi
 fi
 
-FINAL="ReceiptVault CT ${CTID} is ready.\n\nOpen:\n  ${PUBLIC}\n\nCreate the owner account there. Then add Entra app credentials, connect three inboxes, pick audit years, and start the first scan.\n\nExisting Cloudflare Tunnel origin:\n  ${ORIGIN}\n\nInstall log (secrets redacted): ${LOG}\n\nTo change the IP later, re-run this helper and choose Fix / change LAN IP."
+HOST_IP="$(ip -4 -o addr show dev vmbr0 2>/dev/null | awk '{print $4; exit}' | cut -d/ -f1)"
+OPEN_URL="http://${HOST_IP:-192.168.14.1}:8484/"
+FINAL="ReceiptVault CT ${CTID} is ready.\n\nOpen this on the desktop (same IP as the Proxmox UI):\n  ${OPEN_URL}\n\nAlso: ${PUBLIC}\n\nCreate the owner, save the Entra app in Settings, connect Hotmail, start the historical scan.\n\nLog: ${LOG}"
 msg "$FINAL"
-log "Completed CT $CTID ip=$ACCESS_IP port=$APPPORT url=$PUBLIC"
-echo -e "${GN}Done.${CL} Open ${BL}${PUBLIC}${CL}"
+log "Completed CT $CTID ip=$ACCESS_IP url=$OPEN_URL"
+echo -e "${GN}Done.${CL} Open ${BL}${OPEN_URL}${CL}"

@@ -91,4 +91,4 @@ fi
 echo UPDATED
 EOS
 
-echo "Open http://192.168.13.13/ and hard-refresh (Ctrl+Shift+R). Settings must show 1.5.1."
+echo "Open http://192.168.14.1:8484/ and hard-refresh (Ctrl+Shift+R). Settings must show 1.5.1."

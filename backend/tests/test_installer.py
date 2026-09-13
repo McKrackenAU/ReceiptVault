@@ -89,9 +89,10 @@ def test_fix_and_update_download_github_on_the_host():
     assert "RECEIPTVAULT_APP_VERSION=1.5.1" in fix or "RECEIPTVAULT_APP_VERSION=1.5.2" in fix
     assert "github.com/McKrackenAU/ReceiptVault/archive/refs/heads/main.tar.gz" in update
     assert "git fetch --tags origin" not in installer
-    assert "archive/refs/heads/${REPO_REF}.tar.gz" in installer
+    assert "publish-on-host.sh" in installer
     _bash_n(DEPLOY / "guest-update.sh")
     _bash_n(DEPLOY / "install-host-command.sh")
+    _bash_n(DEPLOY / "publish-on-host.sh")
 
 
 def test_cidr_contains_same_subnet_only():

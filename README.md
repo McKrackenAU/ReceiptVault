@@ -46,45 +46,21 @@ cd backend && uv sync --extra dev && uv run pytest -q
 cd ../frontend && npm test || true
 ```
 
-## Production (Debian / Proxmox LXC)
+## Production (Proxmox)
 
-Full steps: [`docs/PROXMOX_INSTALL.md`](docs/PROXMOX_INSTALL.md).
-
-On the Proxmox host, as root — after the repo is on GitHub — either:
+On the Proxmox host:
 
 ```bash
-wget -O /root/install-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/install-receiptvault.sh
-less /root/install-receiptvault.sh
-bash /root/install-receiptvault.sh
+cd /root/ReceiptVault
+git pull
+bash deploy/install-receiptvault.sh
 ```
 
-or the helper-script one-liner (inspect the URL first; never put secrets on this line):
+First time: `git clone --depth 1 https://github.com/McKrackenAU/ReceiptVault.git /root/ReceiptVault` then the same `bash deploy/install-receiptvault.sh`.
 
-```bash
-bash -c "$(wget -qLO - https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/install-receiptvault.sh)"
-```
+Choose **Update** for an existing CT, or **Default install** for a new one. Use an IPv4 on the **same LAN as the Proxmox UI** (if Proxmox is `https://192.168.14.1:8006`, use `192.168.14.13` and gateway `192.168.14.1`).
 
-The helper asks for the LXC IPv4 and the router/gateway (same as other Proxmox helper scripts), creates an unprivileged Debian 13 LXC, installs PostgreSQL, Redis, OCR, and ReceiptVault, then prints `http://<the-ip-you-typed>/`. Create the owner there.
-
-Do not put mailbox passwords or tunnel tokens on the wget line. Cloudflare tokens are entered in a password box if you choose that option.
-
-To update an existing CT, type these **three short lines** on the Proxmox host (git clone prints progress; noVNC can show that):
-
-```bash
-cd /root
-git clone --depth 1 https://github.com/McKrackenAU/ReceiptVault.git
-bash /root/ReceiptVault/deploy/fix-from-host.sh
-```
-
-If `git` is missing, first type `apt-get install -y git`. The first line of output from the script must say `ReceiptVault 1.5.0`. Then hard-refresh **http://192.168.13.13/**. Settings must show **1.5.0**.
-
-After that first update, later updates are one typed word on the host:
-
-```bash
-receiptvault-update
-```
-
-Or open Settings in the browser and click **Update from GitHub**. Inside the LXC you can also run `receiptvault update`.
+When it finishes, open **http://192.168.14.1:8484/** on the desktop (same IP as Proxmox, port 8484). Create the owner, save the Microsoft app in Settings, connect Hotmail, start the historical scan.
 
 ## Operator commands
 

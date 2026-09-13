@@ -418,9 +418,9 @@ exec bash /root/ReceiptVault/deploy/fix-from-host.sh "$@"
 WRAP
 fi
 echo
-echo "Open this in the browser (no port number):"
-echo "  http://${LXC_IP}/"
-echo "Hard-refresh the tab (Ctrl+Shift+R)."
-echo "Settings must show 1.5.1."
-echo "Next update, type this on the Proxmox host:"
-echo "  receiptvault-update"
+if [[ -f "$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd)/publish-on-host.sh" ]]; then
+  bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/publish-on-host.sh" "$CTID" || true
+fi
+echo "Open http://192.168.14.1:8484/ on the desktop (same IP as the Proxmox UI)."
+echo "Do not use 192.168.13.13. Hard-refresh (Ctrl+Shift+R). Settings must show 1.5.1."
+echo "Next update: cd /root/ReceiptVault && git pull && bash deploy/install-receiptvault.sh"
