@@ -11,8 +11,17 @@ def _bash_n(script: Path) -> None:
     assert result.returncode == 0, result.stderr
 
 
+def test_systemd_uses_backend_venv():
+    api = (DEPLOY / "systemd/receiptvault.service").read_text()
+    worker = (DEPLOY / "systemd/receiptvault-worker.service").read_text()
+    assert "/opt/receiptvault/backend/.venv/bin/uvicorn" in api
+    assert "/opt/receiptvault/backend/.venv/bin/dramatiq" in worker
+    assert "/opt/receiptvault/.venv/bin/uvicorn" not in api
+
+
 def test_installer_shell_syntax():
     _bash_n(DEPLOY / "install-receiptvault.sh")
+    _bash_n(DEPLOY / "repair-in-place.sh")
 
 
 def test_bootstrap_and_network_scripts_syntax():

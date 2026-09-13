@@ -3,10 +3,15 @@
 	request_body {
 		max_size 60MB
 	}
-	reverse_proxy 127.0.0.1:8473
-	header {
-		X-Content-Type-Options nosniff
-		Referrer-Policy same-origin
-		X-Frame-Options DENY
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8473
+	}
+	handle /health* {
+		reverse_proxy 127.0.0.1:8473
+	}
+	handle {
+		root * /opt/receiptvault/frontend/dist
+		try_files {path} /index.html
+		file_server
 	}
 }

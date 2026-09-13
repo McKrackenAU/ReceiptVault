@@ -25,6 +25,19 @@ pct exec <CTID> -- systemctl restart caddy
 
 Then open `http://192.168.14.13/` (port 80) or `http://192.168.14.13:8080`.
 
+## Caddy page instead of ReceiptVault
+
+Debian’s Caddy package serves its own welcome page on port 80 until ReceiptVault’s Caddyfile and API are in place. The API unit used to point at `/opt/receiptvault/.venv`, while `uv` installs into `/opt/receiptvault/backend/.venv`, so the app never started and you only saw Caddy.
+
+On the Proxmox host:
+
+```bash
+pct list
+pct exec <CTID> -- bash -lc 'cd /opt/receiptvault && git pull --ff-only origin main && bash deploy/repair-in-place.sh'
+```
+
+Then open `http://<container-ip>/` (and `http://<container-ip>:8080/` as a fallback). You should get the owner setup or login screen, not the Caddy default site.
+
 ## App will not start
 
 - `pg_isready` and `redis-cli ping` should succeed.

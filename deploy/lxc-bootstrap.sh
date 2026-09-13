@@ -104,25 +104,32 @@ install -m 0644 "$APP_ROOT/deploy/systemd/receiptvault.service" /etc/systemd/sys
 install -m 0644 "$APP_ROOT/deploy/systemd/receiptvault-worker.service" /etc/systemd/system/receiptvault-worker.service
 LAN_PORT="${RECEIPTVAULT_LAN_PORT:-8080}"
 if [[ "$LAN_PORT" == "80" ]]; then
-  LISTENS=":80"
+  LISTENS=":80, :8080"
 else
   LISTENS=":80, :${LAN_PORT}"
 fi
+chmod -R a+rX "$APP_ROOT/frontend/dist" || true
 cat >/etc/caddy/Caddyfile <<EOF
 ${LISTENS} {
 	encode gzip
 	request_body {
 		max_size 60MB
 	}
-	reverse_proxy 127.0.0.1:8473
-	header {
-		X-Content-Type-Options nosniff
-		Referrer-Policy same-origin
-		X-Frame-Options DENY
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8473
+	}
+	handle /health* {
+		reverse_proxy 127.0.0.1:8473
+	}
+	handle {
+		root * ${APP_ROOT}/frontend/dist
+		try_files {path} /index.html
+		file_server
 	}
 }
 EOF
-ln -sf "$APP_ROOT/backend/.venv/bin/receiptvault" /usr/local/bin/receiptvault
+ln -sfn "$APP_ROOT/backend/.venv" "$APP_ROOT/.venv"
+ln -sfn "$APP_ROOT/backend/.venv/bin/receiptvault" /usr/local/bin/receiptvault
 systemctl daemon-reload
 systemctl enable --now caddy receiptvault receiptvault-worker
 

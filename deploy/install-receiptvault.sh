@@ -187,9 +187,9 @@ EOS
 
 write_guest_caddy() {
   local port="$1"
-  local listens=":${port}"
-  if [[ "$port" != "80" ]]; then
-    listens=":80, :${port}"
+  local listens=":80, :8080"
+  if [[ "$port" != "80" && "$port" != "8080" ]]; then
+    listens=":80, :8080, :${port}"
   fi
   pct exec "$CTID" -- tee /etc/caddy/Caddyfile >/dev/null <<EOF
 ${listens} {
@@ -197,11 +197,16 @@ ${listens} {
 	request_body {
 		max_size 60MB
 	}
-	reverse_proxy 127.0.0.1:8473
-	header {
-		X-Content-Type-Options nosniff
-		Referrer-Policy same-origin
-		X-Frame-Options DENY
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8473
+	}
+	handle /health* {
+		reverse_proxy 127.0.0.1:8473
+	}
+	handle {
+		root * /opt/receiptvault/frontend/dist
+		try_files {path} /index.html
+		file_server
 	}
 }
 EOF
@@ -323,9 +328,14 @@ if [[ "$MODE" == "repair" || "$MODE" == "update" || "$MODE" == "backup" || "$MOD
       exit 0
       ;;
     repair)
-      pct exec "$CTID" -- bash -lc 'systemctl restart postgresql redis-server caddy receiptvault receiptvault-worker'
-      pct exec "$CTID" -- env LANG=C.UTF-8 LC_ALL=C.UTF-8 curl -fsS http://127.0.0.1:8473/health/live >/dev/null
-      msg "Repair restart completed for CT $CTID."
+      if pct exec "$CTID" -- test -f /opt/receiptvault/deploy/repair-in-place.sh; then
+        pct exec "$CTID" -- bash /opt/receiptvault/deploy/repair-in-place.sh
+      else
+        pct exec "$CTID" -- bash -lc 'systemctl restart postgresql redis-server caddy receiptvault receiptvault-worker'
+        pct exec "$CTID" -- env LANG=C.UTF-8 LC_ALL=C.UTF-8 curl -fsS http://127.0.0.1:8473/health/live >/dev/null
+      fi
+      IPADDR="$(pct exec "$CTID" -- hostname -I | awk '{print $1}')"
+      msg "Repair completed for CT $CTID.\n\nOpen http://${IPADDR}/\nor http://${IPADDR}:8080/"
       exit 0
       ;;
     network)
