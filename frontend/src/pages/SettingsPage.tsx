@@ -17,6 +17,9 @@ type Settings = {
   staging_bytes: number
   selected_financial_year?: string
   app_version: string
+  latest_bundle_version?: string
+  update_available?: boolean
+  can_self_update?: boolean
   ms_client_configured: boolean
 }
 
@@ -40,6 +43,7 @@ export function SettingsPage() {
   const [clientId, setClientId] = useState('')
   const [clientSecret, setClientSecret] = useState('')
   const [msg, setMsg] = useState('')
+  const [updating, setUpdating] = useState(false)
 
   useEffect(() => {
     api<Settings>('/api/v1/settings').then((s) => {
@@ -127,6 +131,31 @@ export function SettingsPage() {
           <p className="text-sm">Public URL: {settings.public_url}</p>
           <p className="text-sm">Microsoft app configured: {settings.ms_client_configured ? 'yes' : 'no'} (mock={String(settings.graph_mock)})</p>
           <p className="text-sm">Version {settings.app_version}</p>
+          {settings.latest_bundle_version && settings.latest_bundle_version !== settings.app_version && (
+            <p className="text-sm">Bundle on this build: {settings.latest_bundle_version}</p>
+          )}
+          <Button
+            className="mt-3"
+            disabled={updating}
+            onClick={() => {
+              setUpdating(true)
+              setMsg('Downloading the latest ReceiptVault from GitHub. Keep this tab open…')
+              api<{ version: string }>('/api/v1/ops/update', { method: 'POST', body: JSON.stringify({}) })
+                .then((r) => {
+                  setMsg(`Updated to ${r.version}. The app is restarting — wait 10 seconds, then hard-refresh (Ctrl+Shift+R).`)
+                })
+                .catch((err: Error) => {
+                  setMsg(err.message || 'Update failed')
+                })
+                .finally(() => setUpdating(false))
+            }}
+          >
+            {updating ? 'Updating…' : 'Update from GitHub'}
+          </Button>
+          <p className="mt-2 text-sm text-slate">
+            This downloads the app tarball. It does not use git. After the first host update you can also type{' '}
+            <code>receiptvault-update</code> on the Proxmox host.
+          </p>
         </Card>
         <Card>
           <h2 className="font-serif text-xl">System health</h2>

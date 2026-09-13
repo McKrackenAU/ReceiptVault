@@ -11,8 +11,10 @@ from app.api.deps import client_ip, current_user, require_csrf, settings_dep
 from app.config import Settings, reload_settings, upsert_env_key
 from app.db import get_db
 from app.models import AppSetting, User
+from app.errors import AppError
 from app.services.audit import record_audit
 from app.services.backup import create_backup, restore_backup
+from app.services.self_update import APP_VERSION, apply_update, production_install
 
 router = APIRouter(tags=["settings"])
 
@@ -56,6 +58,9 @@ def get_settings_api(user: User = Depends(current_user), db: Session = Depends(g
         "selected_financial_year": (stored.get("ui") or {}).get("selected_financial_year"),
         "incremental_scan_minutes": settings.incremental_scan_minutes,
         "app_version": settings.app_version,
+        "latest_bundle_version": APP_VERSION,
+        "update_available": settings.app_version != APP_VERSION,
+        "can_self_update": production_install(),
         "ms_client_configured": bool(settings.ms_client_id) or settings.graph_mock,
     }
 
@@ -92,6 +97,31 @@ def put_settings(body: SettingsBody, request: Request, user: User = Depends(curr
         "oauth_redirect": settings.oauth_redirect_uri,
         "ms_client_configured": bool(settings.ms_client_id) or settings.graph_mock,
     }
+
+
+@router.post("/ops/update")
+def self_update_api(
+    request: Request,
+    user: User = Depends(current_user),
+    settings: Settings = Depends(settings_dep),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_csrf),
+):
+    if not production_install():
+        raise AppError(
+            409,
+            "Update not available here",
+            "Self-update runs on the Proxmox LXC at /opt/receiptvault. Use Settings there, or type receiptvault-update on the host.",
+        )
+    try:
+        result = apply_update(skip_restart=False)
+    except Exception as exc:
+        record_audit(db, event_type="app_update", success=False, user_id=user.id, ip=client_ip(request, settings), metadata={"error": str(exc)})
+        db.commit()
+        raise AppError(500, "Update failed", str(exc)) from exc
+    record_audit(db, event_type="app_update", success=True, user_id=user.id, ip=client_ip(request, settings), metadata=result)
+    db.commit()
+    return result
 
 
 @router.post("/ops/backup")

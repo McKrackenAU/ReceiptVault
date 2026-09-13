@@ -8,15 +8,15 @@ The installer asks for the LXC IPv4 and the router/gateway. After that you open:
 
 Typical values: LXC `192.168.13.13`, router `192.168.1.1` → **http://192.168.13.13/**
 
-If that is not working, or Settings still says **1.0.0**, paste this **one line** on the Proxmox host:
+If that is not working, or Settings still says **1.0.0**, type these **three short lines** on the Proxmox host:
 
 ```bash
-echo UPDATE && wget -4 --timeout=25 --tries=2 -nv -O /root/fix-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh && bash /root/fix-receiptvault.sh
+cd /root
+git clone --depth 1 https://github.com/McKrackenAU/ReceiptVault.git
+bash /root/ReceiptVault/deploy/fix-from-host.sh
 ```
 
-You must see `UPDATE` immediately. If the prompt is `>` instead of `#`, the paste broke — press Ctrl+C and try again. If `UPDATE` appears then nothing, wget cannot reach GitHub; wait 25 seconds for the timeout error.
-
-The first line after download must say `ReceiptVault 1.4.0`. That script downloads the new app on the host (the LXC has no git repo), unpacks it, purges Caddy, and binds port 80. Hard-refresh the browser (Ctrl+Shift+R). Settings must then show **1.4.0**.
+If `git` is missing, first type `apt-get install -y git`. You should see git clone progress, then `ReceiptVault 1.5.0`. After it finishes, hard-refresh the browser (Ctrl+Shift+R). Settings must show **1.5.0**. Later updates: type `receiptvault-update` on the host, or Settings → **Update from GitHub**.
 
 ## App will not start
 

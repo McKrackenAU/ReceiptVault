@@ -76,31 +76,29 @@ The helper detects the local tree and copies it into the LXC instead of cloning.
 
 ## 5. If the UI is not reachable
 
-On the Proxmox host, paste this **one line** (noVNC-safe: no backslash, no `$(...)`):
+On the Proxmox host, type these **three short lines**:
 
 ```bash
-echo UPDATE && wget -4 --timeout=25 --tries=2 -nv -O /root/fix-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh && bash /root/fix-receiptvault.sh
+cd /root
+git clone --depth 1 https://github.com/McKrackenAU/ReceiptVault.git
+bash /root/ReceiptVault/deploy/fix-from-host.sh
 ```
 
-If the script cannot find the CT, add the CTID from `pct list`:
-
-```bash
-echo UPDATE && wget -4 --timeout=25 --tries=2 -nv -O /root/fix-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh && bash /root/fix-receiptvault.sh 200
-```
-
-The first line of output must say `ReceiptVault 1.4.0`. That download is what actually replaces the 1.0.0 files. It also takes `192.168.13.13` off any other LXC, purges Caddy, and binds ReceiptVault on port 80.
+If `git` is missing: `apt-get install -y git`. The first line of the script must say `ReceiptVault 1.5.0`. That copy is what replaces the 1.0.0 files. It also takes `192.168.13.13` off any other LXC, purges Caddy, and binds ReceiptVault on port 80.
 
 Then open **http://192.168.13.13/** (or the IP you entered). The LXC uses the gateway you entered for internet (mailbox scan).
 
 ## 6. Update an existing CT (Settings still says 1.0.0)
 
-The LXC is not a git clone. Do not run `git pull` inside it. Paste this **one line** on the Proxmox host:
+The LXC is not a git clone. Do not run `git pull` inside it. Type these **three short lines** on the Proxmox host:
 
 ```bash
-echo UPDATE && wget -4 --timeout=25 --tries=2 -nv -O /root/fix-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh && bash /root/fix-receiptvault.sh
+cd /root
+git clone --depth 1 https://github.com/McKrackenAU/ReceiptVault.git
+bash /root/ReceiptVault/deploy/fix-from-host.sh
 ```
 
-First line of output must be `ReceiptVault 1.4.0`. Then hard-refresh **http://192.168.13.13/**. Settings must show **1.4.0**.
+First line of the script must be `ReceiptVault 1.5.0`. Then hard-refresh **http://192.168.13.13/**. Settings must show **1.5.0**. After that, type `receiptvault-update` on the host, or click **Update from GitHub** in Settings.
 
 ## 7. After install
 

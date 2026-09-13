@@ -41,6 +41,10 @@ def client():
 
 @pytest.fixture
 def owner(client: TestClient):
+    me = client.get("/api/v1/auth/me")
+    if me.status_code == 200:
+        csrf = client.get("/api/v1/auth/csrf").json()["csrf"]
+        return {"csrf": csrf}
     ready = client.get("/api/v1/auth/setup-required").json()
     if ready["required"]:
         r = client.post(

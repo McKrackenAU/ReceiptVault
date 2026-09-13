@@ -26,6 +26,7 @@ Decisions below are not prescribed by `CURSOR_BUILD_REQUIREMENTS.md`. They exist
 | D-020 | First-run wizard covers owner, timezone, storage check, Entra credentials, three inboxes, audit years, first scan | Satisfies the handover requirement that production must not need source edits. | 2026-09-13 |
 | D-021 | Cloudflare request sizing | Consulted Cloudflare Workers/platform limits (updated 2026-09-05): Free/Pro request body 100 MB. Default chunk 16 MiB stays well under that with protocol overhead. | 2026-09-13 |
 | D-022 | ATO Help links | Official record-keeping page retrieved 2026-09-13 (ATO last updated 2026-06-08). Help quotes eligibility/evidence rules and does not invent deductions. | 2026-09-13 |
+| D-023 | Updates use a **GitHub tarball**, never `git pull` in the LXC | The installer copies the tree without `.git`. Host command `receiptvault-update` clones on the Proxmox host; Settings and `receiptvault update` unpack `main.tar.gz` inside the CT. | 2026-09-13 |
 
 ## Ambiguities considered and not changed
 

@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Run as root on the Proxmox HOST (the shell that has pct).
-# One line (safe for noVNC — no backslash, no $(...), do not pipe to bash).
-# echo prints first so the console is not blank while wget runs.
+# First time on the Proxmox host, type these three short lines:
 #
-#   echo UPDATE && wget -4 --timeout=25 --tries=2 -nv -O /root/fix-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh && bash /root/fix-receiptvault.sh
+#   cd /root
+#   git clone --depth 1 https://github.com/McKrackenAU/ReceiptVault.git
+#   bash /root/ReceiptVault/deploy/fix-from-host.sh
 #
-# If the script cannot find the CT, add the CTID from pct list:
-#   echo UPDATE && wget -4 --timeout=25 --tries=2 -nv -O /root/fix-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh && bash /root/fix-receiptvault.sh 200
+# After that, type: receiptvault-update
 #
 # Downloads ReceiptVault from GitHub on the HOST, unpacks it in the LXC,
 # purges Caddy, and binds the app on http://<lxc-ip>/
-echo "ReceiptVault 1.4.0 — refresh app from GitHub, purge Caddy, bind :80"
+echo "ReceiptVault 1.5.0 — refresh app from GitHub, purge Caddy, bind :80"
 set -euo pipefail
 export LANG=C.UTF-8 LC_ALL=C.UTF-8 DEBIAN_FRONTEND=noninteractive
 
@@ -166,32 +166,43 @@ if ! pct exec "$CTID" -- test -d /opt/receiptvault/backend; then
   exit 1
 fi
 
-echo "Install ReceiptVault 1.4.0 from GitHub (this is what actually changes the version)"
-TGZ=/tmp/receiptvault-main.tgz
-echo "Downloading source (IPv4, 40s timeout)..."
-wget -4 --timeout=40 --tries=3 -nv --no-cache -O "$TGZ" https://github.com/McKrackenAU/ReceiptVault/archive/refs/heads/main.tar.gz
-echo "Download finished."
-if ! gzip -t "$TGZ" 2>/dev/null; then
-  echo "ERROR: GitHub download was not a gzip archive. First bytes:"
-  head -c 200 "$TGZ"; echo
-  exit 1
+echo "Install ReceiptVault 1.5.0 (this is what actually changes the version)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd || true)"
+LOCAL=""
+if [[ -n "$SCRIPT_DIR" && -d "$SCRIPT_DIR/../backend" && -d "$SCRIPT_DIR/../frontend" ]]; then
+  LOCAL="$(cd "$SCRIPT_DIR/.." && pwd)"
 fi
-pct push "$CTID" "$TGZ" /tmp/receiptvault-main.tgz
+if [[ -n "$LOCAL" ]]; then
+  echo "Copying local tree $LOCAL into CT ${CTID}"
+  tar -C "$LOCAL" --exclude='.git' --exclude='node_modules' --exclude='frontend/node_modules' --exclude='.venv' --exclude='backend/.venv' --exclude='var' -cf - . \
+    | pct exec "$CTID" -- tar -C /opt/receiptvault -xf -
+else
+  echo "Downloading source (IPv4, 40s timeout)..."
+  TGZ=/tmp/receiptvault-main.tgz
+  wget -4 --timeout=40 --tries=3 -nv --no-cache -O "$TGZ" https://github.com/McKrackenAU/ReceiptVault/archive/refs/heads/main.tar.gz
+  echo "Download finished."
+  if ! gzip -t "$TGZ" 2>/dev/null; then
+    echo "ERROR: GitHub download was not a gzip archive. First bytes:"
+    head -c 200 "$TGZ"; echo
+    exit 1
+  fi
+  pct push "$CTID" "$TGZ" /tmp/receiptvault-main.tgz
+  pct exec "$CTID" -- env LANG=C.UTF-8 LC_ALL=C.UTF-8 bash -s <<'EOS'
+set -euo pipefail
+APP=/opt/receiptvault
+rm -rf /tmp/ReceiptVault-main
+tar -xzf /tmp/receiptvault-main.tgz -C /tmp
+SRC="$(find /tmp -maxdepth 1 -type d -name 'ReceiptVault-*' | head -n 1)"
+test -d "$SRC/backend"
+cp -a "$SRC/." "$APP/"
+rm -rf "$SRC" /tmp/receiptvault-main.tgz
+EOS
+fi
 pct exec "$CTID" -- env LANG=C.UTF-8 LC_ALL=C.UTF-8 bash -s <<'EOS'
 set -euo pipefail
 export PATH="/usr/local/bin:/usr/bin:$PATH"
 export DEBIAN_FRONTEND=noninteractive
 APP=/opt/receiptvault
-rm -rf /tmp/ReceiptVault-main
-tar -xzf /tmp/receiptvault-main.tgz -C /tmp
-SRC="$(find /tmp -maxdepth 1 -type d -name 'ReceiptVault-*' | head -n 1)"
-if [[ -z "$SRC" || ! -d "$SRC/backend" ]]; then
-  echo "ERROR: unexpected GitHub archive layout"
-  ls /tmp
-  exit 1
-fi
-cp -a "$SRC/." "$APP/"
-rm -rf "$SRC" /tmp/receiptvault-main.tgz
 id receiptvault >/dev/null 2>&1 && chown -R receiptvault:receiptvault "$APP/frontend" "$APP/backend/app" "$APP/deploy" || true
 chmod +x "$APP/deploy/"*.sh "$APP/deploy/run-api.sh" 2>/dev/null || true
 command -v npm >/dev/null || apt-get install -y -qq npm >/dev/null
@@ -208,7 +219,7 @@ if [[ ! -f "$APP/frontend/dist/index.html" ]]; then
   echo "ERROR: UI build did not produce frontend/dist/index.html"
   exit 1
 fi
-echo "Unpacked ReceiptVault 1.4.0"
+echo "Unpacked ReceiptVault 1.5.0"
 EOS
 
 echo "Purging Caddy and binding ReceiptVault on port 80"
@@ -261,7 +272,7 @@ grep -q '^RECEIPTVAULT_PUBLIC_URL=' "$ENV" && sed -i "s|^RECEIPTVAULT_PUBLIC_URL
 grep -q '^RECEIPTVAULT_LAN_PORT=' "$ENV" && sed -i "s|^RECEIPTVAULT_LAN_PORT=.*|RECEIPTVAULT_LAN_PORT=80|" "$ENV" || echo "RECEIPTVAULT_LAN_PORT=80" >>"$ENV"
 grep -q '^RECEIPTVAULT_API_HOST=' "$ENV" && sed -i "s|^RECEIPTVAULT_API_HOST=.*|RECEIPTVAULT_API_HOST=0.0.0.0|" "$ENV" || echo "RECEIPTVAULT_API_HOST=0.0.0.0" >>"$ENV"
 grep -q '^RECEIPTVAULT_API_PORT=' "$ENV" && sed -i "s|^RECEIPTVAULT_API_PORT=.*|RECEIPTVAULT_API_PORT=80|" "$ENV" || echo "RECEIPTVAULT_API_PORT=80" >>"$ENV"
-grep -q '^RECEIPTVAULT_APP_VERSION=' "$ENV" && sed -i "s|^RECEIPTVAULT_APP_VERSION=.*|RECEIPTVAULT_APP_VERSION=1.4.0|" "$ENV" || echo "RECEIPTVAULT_APP_VERSION=1.4.0" >>"$ENV"
+grep -q '^RECEIPTVAULT_APP_VERSION=' "$ENV" && sed -i "s|^RECEIPTVAULT_APP_VERSION=.*|RECEIPTVAULT_APP_VERSION=1.5.0|" "$ENV" || echo "RECEIPTVAULT_APP_VERSION=1.5.0" >>"$ENV"
 
 mkdir -p "$APP/deploy"
 cat >"$APP/deploy/run-api.sh" <<'RUN'
@@ -352,7 +363,7 @@ if echo "$page" | grep -qi 'Your web server is working'; then
   ss -lntp || true
   exit 1
 fi
-echo "App is up on http://${IP}/  version 1.4.0"
+echo "App is up on http://${IP}/  version 1.5.0"
 EOS
 
 echo
@@ -369,8 +380,28 @@ if [[ "$CODE" != "200" ]] || grep -qi 'Your web server is working\|Congratulatio
   exit 1
 fi
 
+if [[ -f "$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd)/install-host-command.sh" ]]; then
+  bash "$(cd "$(dirname "${BASH_SOURCE[0]:-}")" && pwd)/install-host-command.sh" || true
+else
+  install -m 0755 /dev/stdin /usr/local/sbin/receiptvault-update <<'WRAP' || true
+#!/bin/bash
+echo "ReceiptVault host update"
+set -euo pipefail
+command -v git >/dev/null || apt-get install -y -qq git
+if [[ -d /root/ReceiptVault/.git ]]; then
+  git -C /root/ReceiptVault fetch --depth 1 origin main
+  git -C /root/ReceiptVault reset --hard origin/main
+else
+  rm -rf /root/ReceiptVault
+  git clone --depth 1 https://github.com/McKrackenAU/ReceiptVault.git /root/ReceiptVault
+fi
+exec bash /root/ReceiptVault/deploy/fix-from-host.sh "$@"
+WRAP
+fi
 echo
 echo "Open this in the browser (no port number):"
 echo "  http://${LXC_IP}/"
 echo "Hard-refresh the tab (Ctrl+Shift+R)."
-echo "The sidebar and Settings must show 1.4.0 — if they still say 1.0.0, the old script ran, not this one."
+echo "Settings must show 1.5.0."
+echo "Next update, type this on the Proxmox host:"
+echo "  receiptvault-update"

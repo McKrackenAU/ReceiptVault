@@ -12,7 +12,7 @@
 #   RECEIPTVAULT_REPO=https://github.com/McKrackenAU/ReceiptVault.git bash /root/install-receiptvault.sh
 set -euo pipefail
 
-VERSION="1.4.0"
+VERSION="1.5.0"
 APP="ReceiptVault"
 REPO_URL="${RECEIPTVAULT_REPO:-https://github.com/McKrackenAU/ReceiptVault.git}"
 REPO_REF="${RECEIPTVAULT_REF:-main}"
@@ -395,7 +395,7 @@ cp -a "$SRC/." "$APP/"
 rm -rf "$SRC" /tmp/receiptvault-main.tgz
 ENV=/etc/receiptvault/receiptvault.env
 if [[ -f "$ENV" ]]; then
-  grep -q '^RECEIPTVAULT_APP_VERSION=' "$ENV" && sed -i 's|^RECEIPTVAULT_APP_VERSION=.*|RECEIPTVAULT_APP_VERSION=1.4.0|' "$ENV" || echo 'RECEIPTVAULT_APP_VERSION=1.4.0' >>"$ENV"
+  grep -q '^RECEIPTVAULT_APP_VERSION=' "$ENV" && sed -i 's|^RECEIPTVAULT_APP_VERSION=.*|RECEIPTVAULT_APP_VERSION=1.5.0|' "$ENV" || echo 'RECEIPTVAULT_APP_VERSION=1.5.0' >>"$ENV"
 fi
 EOS
       if ! pct exec "$CTID" -- bash /opt/receiptvault/deploy/lxc-bootstrap.sh; then

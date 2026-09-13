@@ -74,6 +74,22 @@ def restore_cmd(path: Path, passphrase: str = typer.Option(None), dry_run: bool 
     typer.echo(result)
 
 
+@app.command("update")
+def update_cmd():
+    """Download GitHub main into this LXC and restart. Does not use git pull."""
+    from app.services.self_update import apply_update, production_install
+
+    if not production_install():
+        typer.echo("This command updates /opt/receiptvault inside the LXC.")
+        raise typer.Exit(1)
+    try:
+        result = apply_update()
+    except Exception as exc:
+        typer.echo(f"Update failed: {exc}")
+        raise typer.Exit(1) from exc
+    typer.echo(f"Updated to {result['version']}. Hard-refresh the browser.")
+
+
 @app.command("health")
 def health_cmd():
     from sqlalchemy import text

@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     incremental_scan_minutes: int = 15
     cookie_name: str = "rv_session"
     csrf_header: str = "X-CSRF-Token"
-    app_version: str = "1.4.0"
+    app_version: str = "1.5.0"
 
     @field_validator("chunk_size_mib")
     @classmethod

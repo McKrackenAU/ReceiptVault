@@ -68,19 +68,30 @@ The helper asks for the LXC IPv4 and the router/gateway (same as other Proxmox h
 
 Do not put mailbox passwords or tunnel tokens on the wget line. Cloudflare tokens are entered in a password box if you choose that option.
 
-To update an existing CT, paste this **one line** on the Proxmox host (noVNC-safe: no backslash, no `$(...)`, do not pipe to bash):
+To update an existing CT, type these **three short lines** on the Proxmox host (git clone prints progress; noVNC can show that):
 
 ```bash
-echo UPDATE && wget -4 --timeout=25 --tries=2 -nv -O /root/fix-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh && bash /root/fix-receiptvault.sh
+cd /root
+git clone --depth 1 https://github.com/McKrackenAU/ReceiptVault.git
+bash /root/ReceiptVault/deploy/fix-from-host.sh
 ```
 
-The first line of output must say `ReceiptVault 1.4.0`. Then open **http://192.168.13.13/** and hard-refresh (Ctrl+Shift+R). Settings must show **1.4.0**. If the script cannot find the CT, add the CTID from `pct list` at the end, for example `&& bash /root/fix-receiptvault.sh 200`.
+If `git` is missing, first type `apt-get install -y git`. The first line of output from the script must say `ReceiptVault 1.5.0`. Then hard-refresh **http://192.168.13.13/**. Settings must show **1.5.0**.
+
+After that first update, later updates are one typed word on the host:
+
+```bash
+receiptvault-update
+```
+
+Or open Settings in the browser and click **Update from GitHub**. Inside the LXC you can also run `receiptvault update`.
 
 ## Operator commands
 
 ```bash
 receiptvault reset-password OWNER_USERNAME 'new-long-password'
 receiptvault disable-totp OWNER_USERNAME
+receiptvault update
 receiptvault backup --include-evidence
 receiptvault restore /path/to/backup.tar --dry-run
 ```
