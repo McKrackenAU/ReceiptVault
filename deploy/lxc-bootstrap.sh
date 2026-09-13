@@ -74,10 +74,14 @@ url = os.environ.get("RECEIPTVAULT_DATABASE_URL", "")
 print(urllib.parse.urlparse(url).password or "")
 PY
 )"
-runuser -u postgres -- psql -v ON_ERROR_STOP=0 -c "CREATE USER receiptvault LOGIN PASSWORD '${DB_PASS}';" || true
-runuser -u postgres -- psql -v ON_ERROR_STOP=0 -c "ALTER USER receiptvault WITH PASSWORD '${DB_PASS}';"
-runuser -u postgres -- psql -v ON_ERROR_STOP=0 -c "CREATE DATABASE receiptvault OWNER receiptvault;" || true
-runuser -u postgres -- psql -d receiptvault -c "GRANT ALL ON SCHEMA public TO receiptvault; ALTER DATABASE receiptvault OWNER TO receiptvault;"
+if [[ -f "$APP_ROOT/deploy/ensure-db.sh" ]]; then
+  bash "$APP_ROOT/deploy/ensure-db.sh"
+else
+  runuser -u postgres -- psql -v ON_ERROR_STOP=0 -c "CREATE USER receiptvault LOGIN PASSWORD '${DB_PASS}';" || true
+  runuser -u postgres -- psql -v ON_ERROR_STOP=0 -c "ALTER USER receiptvault WITH PASSWORD '${DB_PASS}';"
+  runuser -u postgres -- psql -v ON_ERROR_STOP=0 -c "CREATE DATABASE receiptvault OWNER receiptvault;" || true
+  runuser -u postgres -- psql -d receiptvault -c "GRANT ALL ON SCHEMA public TO receiptvault; ALTER DATABASE receiptvault OWNER TO receiptvault;"
+fi
 
 export PATH="/usr/local/bin:/usr/bin:$PATH"
 log "Installing Python application"

@@ -168,8 +168,40 @@ WantedBy=multi-user.target
 UNIT
 
 systemctl daemon-reload
-systemctl enable --now postgresql redis-server receiptvault >/dev/null 2>&1 || true
-systemctl restart postgresql redis-server receiptvault || true
+systemctl enable --now postgresql redis-server >/dev/null 2>&1 || true
+systemctl restart postgresql redis-server || true
+set -a
+# shellcheck disable=SC1090
+source "$ENV"
+set +a
+if [[ -f "$APP/deploy/ensure-db.sh" ]]; then
+  bash "$APP/deploy/ensure-db.sh"
+else
+  python3 - <<'PY'
+import os, subprocess, urllib.parse
+raw = os.environ.get("RECEIPTVAULT_DATABASE_URL", "")
+url = raw.replace("postgresql+psycopg://", "postgresql://", 1)
+parsed = urllib.parse.urlparse(url)
+user = urllib.parse.unquote(parsed.username or "receiptvault")
+password = urllib.parse.unquote(parsed.password or "")
+database = (parsed.path or "/receiptvault").lstrip("/") or "receiptvault"
+pw = password.replace("'", "''")
+def psql(*args):
+    subprocess.run(["runuser", "-u", "postgres", "--", "psql", "-v", "ON_ERROR_STOP=1", *args], check=True)
+psql("-c", f"DO $$ BEGIN CREATE ROLE {user} LOGIN PASSWORD '{pw}'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;")
+psql("-c", f"ALTER ROLE {user} WITH LOGIN PASSWORD '{pw}';")
+exists = subprocess.run(
+    ["runuser", "-u", "postgres", "--", "psql", "-tAc", f"SELECT 1 FROM pg_database WHERE datname = '{database}'"],
+    check=True, capture_output=True, text=True,
+).stdout.strip()
+if exists != "1":
+    psql("-c", f"CREATE DATABASE {database} OWNER {user};")
+psql("-d", database, "-c", f"GRANT ALL ON SCHEMA public TO {user}; ALTER DATABASE {database} OWNER TO {user};")
+print("database ready")
+PY
+fi
+systemctl enable receiptvault >/dev/null
+systemctl restart receiptvault
 
 ok=0
 for _ in $(seq 1 40); do

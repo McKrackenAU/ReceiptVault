@@ -18,6 +18,7 @@ That sets `192.168.13.13/16` with gateway `192.168.1.1`, stops Caddy, and starts
 
 ## App will not start
 
+- `password authentication failed for user "receiptvault"` means the URL in `/etc/receiptvault/receiptvault.env` does not match Postgres. Re-run `fix-from-host.sh`, or inside the CT: `bash /opt/receiptvault/deploy/ensure-db.sh && systemctl restart receiptvault`.
 - `pg_isready` and `redis-cli ping` should succeed.
 - `RECEIPTVAULT_DATABASE_URL` must use the `postgresql+psycopg://` scheme.
 - `journalctl -u receiptvault -u receiptvault-worker` on production.
