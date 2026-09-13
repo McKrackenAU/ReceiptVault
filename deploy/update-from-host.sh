@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Run as root on the Proxmox HOST. Paste each line separately:
+# Run as root on the Proxmox HOST. Paste each line separately.
+# Do not join them. Do not use backslash.
 #
 #   wget --no-cache -O /root/update-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/update-from-host.sh
 #   bash /root/update-receiptvault.sh
 #
 # Downloads the tree on the HOST (which can reach GitHub), then copies it
 # into the LXC. The guest often cannot git-pull and sometimes cannot curl GitHub.
-echo "ReceiptVault update 1.3.2 — host download, then unpack in the LXC"
+echo "ReceiptVault 1.4.0 — host download, then unpack in the LXC"
 set -euo pipefail
 export LANG=C.UTF-8 LC_ALL=C.UTF-8
 
@@ -75,6 +76,10 @@ if [[ ! -f "$APP/frontend/dist/index.html" ]]; then
   echo "UI build did not produce frontend/dist/index.html"
   exit 1
 fi
+ENV=/etc/receiptvault/receiptvault.env
+if [[ -f "$ENV" ]]; then
+  grep -q '^RECEIPTVAULT_APP_VERSION=' "$ENV" && sed -i 's|^RECEIPTVAULT_APP_VERSION=.*|RECEIPTVAULT_APP_VERSION=1.4.0|' "$ENV" || echo 'RECEIPTVAULT_APP_VERSION=1.4.0' >>"$ENV"
+fi
 systemctl restart receiptvault
 ok=0
 for _ in $(seq 1 30); do
@@ -88,4 +93,4 @@ fi
 echo UPDATED
 EOS
 
-echo "Open http://192.168.13.13/ and hard-refresh (Ctrl+Shift+R)."
+echo "Open http://192.168.13.13/ and hard-refresh (Ctrl+Shift+R). Settings must show 1.4.0."

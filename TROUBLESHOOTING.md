@@ -8,15 +8,15 @@ The installer asks for the LXC IPv4 and the router/gateway. After that you open:
 
 Typical values: LXC `192.168.13.13`, router `192.168.1.1` → **http://192.168.13.13/**
 
-If that is not working, run this **on the Proxmox host**:
+If that is not working, or Settings still says **1.0.0**, paste these **three lines one at a time** on the Proxmox host:
 
 ```bash
-wget -O /root/fix-receiptvault.sh \
-  https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh
+pct list
+wget --no-cache -O /root/fix-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh
 bash /root/fix-receiptvault.sh
 ```
 
-That **purges Caddy** (so the welcome page cannot come back) and binds ReceiptVault on port 80. Hard-refresh the browser (Ctrl+Shift+R).
+The first line must say `ReceiptVault 1.4.0`. That script downloads the new app on the host (the LXC has no git repo), unpacks it, purges Caddy, and binds port 80. Hard-refresh the browser (Ctrl+Shift+R). Settings must then show **1.4.0**.
 
 ## App will not start
 

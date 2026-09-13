@@ -60,7 +60,7 @@ async def security_and_correlation(request: Request, call_next):
 
 @app.get("/health/live")
 def live():
-    return {"status": "ok"}
+    return {"status": "ok", "version": settings.app_version}
 
 
 @app.on_event("startup")

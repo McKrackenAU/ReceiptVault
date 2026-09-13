@@ -53,8 +53,7 @@ Full steps: [`docs/PROXMOX_INSTALL.md`](docs/PROXMOX_INSTALL.md).
 On the Proxmox host, as root — after the repo is on GitHub — either:
 
 ```bash
-wget -O /root/install-receiptvault.sh \
-  https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/install-receiptvault.sh
+wget -O /root/install-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/install-receiptvault.sh
 less /root/install-receiptvault.sh
 bash /root/install-receiptvault.sh
 ```
@@ -69,15 +68,15 @@ The helper asks for the LXC IPv4 and the router/gateway (same as other Proxmox h
 
 Do not put mailbox passwords or tunnel tokens on the wget line. Cloudflare tokens are entered in a password box if you choose that option.
 
-If an existing CT is not reachable, run this **on the Proxmox host**:
+If an existing CT is still on 1.0.0, or the UI is not reachable, paste these **three lines one at a time** on the Proxmox host (noVNC breaks backslashes and `$(...)`):
 
 ```bash
-wget --no-cache -O /root/fix-receiptvault.sh \
-  https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh
+pct list
+wget --no-cache -O /root/fix-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh
 bash /root/fix-receiptvault.sh
 ```
 
-The first line of output must say `access fix 1.3.0`. Then open **http://192.168.13.13/** and hard-refresh (Ctrl+Shift+R).
+The first line of output must say `ReceiptVault 1.4.0`. If it does not, the old script is still on disk — run the wget again. Then open **http://192.168.13.13/** and hard-refresh (Ctrl+Shift+R). Settings must show **1.4.0**.
 
 ## Operator commands
 

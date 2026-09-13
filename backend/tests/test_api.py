@@ -8,7 +8,8 @@ from fastapi.testclient import TestClient
 def test_live_health(client: TestClient):
     r = client.get("/health/live")
     assert r.status_code == 200
-    assert r.json() == {"status": "ok"}
+    assert r.json()["status"] == "ok"
+    assert r.json().get("version")
     assert "database" not in r.json()
 
 

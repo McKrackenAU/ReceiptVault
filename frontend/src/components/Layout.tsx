@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 
@@ -16,6 +17,13 @@ const links = [
 
 export function Layout() {
   const navigate = useNavigate()
+  const [version, setVersion] = useState('')
+  useEffect(() => {
+    fetch('/health/live', { credentials: 'include' })
+      .then((r) => r.json())
+      .then((d) => setVersion(d.version || ''))
+      .catch(() => undefined)
+  }, [])
   async function logout() {
     await api('/api/v1/auth/logout', { method: 'POST' })
     navigate('/login')
@@ -24,7 +32,7 @@ export function Layout() {
     <div className="min-h-screen md:grid md:grid-cols-[240px_1fr]">
       <aside className="bg-pine-deep text-paper px-4 py-6">
         <p className="font-serif text-2xl">ReceiptVault</p>
-        <p className="mt-1 text-xs text-paper/70">Private evidence locker</p>
+        <p className="mt-1 text-xs text-paper/70">Private evidence locker{version ? ` · ${version}` : ''}</p>
         <nav className="mt-8 flex flex-col gap-1" aria-label="Main">
           {links.map(([to, label]) => (
             <NavLink

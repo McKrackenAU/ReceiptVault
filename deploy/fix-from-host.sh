@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 # Run as root on the Proxmox HOST (the shell that has pct).
+# Paste each line separately. Do not join them. Do not use backslash.
 #
-#   wget --no-cache -O /root/fix-receiptvault.sh \
-#     https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh
+#   pct list
+#   wget --no-cache -O /root/fix-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh
 #   bash /root/fix-receiptvault.sh
 #
-# Purges Caddy and puts ReceiptVault on http://<lxc-ip>/
-echo "ReceiptVault access fix 1.3.0 — take the LAN IP, remove every Caddy on it, bind the app on :80"
+# If the script cannot find the CT, pass the CTID from pct list:
+#   bash /root/fix-receiptvault.sh 200
+#
+# Downloads ReceiptVault from GitHub on the HOST, unpacks it in the LXC,
+# purges Caddy, and binds the app on http://<lxc-ip>/
+echo "ReceiptVault 1.4.0 — refresh app from GitHub, purge Caddy, bind :80"
 set -euo pipefail
 export LANG=C.UTF-8 LC_ALL=C.UTF-8 DEBIAN_FRONTEND=noninteractive
 
@@ -162,6 +167,49 @@ if ! pct exec "$CTID" -- test -d /opt/receiptvault/backend; then
   exit 1
 fi
 
+echo "Install ReceiptVault 1.4.0 from GitHub (this is what actually changes the version)"
+TGZ=/tmp/receiptvault-main.tgz
+wget --no-cache -O "$TGZ" https://github.com/McKrackenAU/ReceiptVault/archive/refs/heads/main.tar.gz
+if ! gzip -t "$TGZ" 2>/dev/null; then
+  echo "ERROR: GitHub download was not a gzip archive. First bytes:"
+  head -c 200 "$TGZ"; echo
+  exit 1
+fi
+pct push "$CTID" "$TGZ" /tmp/receiptvault-main.tgz
+pct exec "$CTID" -- env LANG=C.UTF-8 LC_ALL=C.UTF-8 bash -s <<'EOS'
+set -euo pipefail
+export PATH="/usr/local/bin:/usr/bin:$PATH"
+export DEBIAN_FRONTEND=noninteractive
+APP=/opt/receiptvault
+rm -rf /tmp/ReceiptVault-main
+tar -xzf /tmp/receiptvault-main.tgz -C /tmp
+SRC="$(find /tmp -maxdepth 1 -type d -name 'ReceiptVault-*' | head -n 1)"
+if [[ -z "$SRC" || ! -d "$SRC/backend" ]]; then
+  echo "ERROR: unexpected GitHub archive layout"
+  ls /tmp
+  exit 1
+fi
+cp -a "$SRC/." "$APP/"
+rm -rf "$SRC" /tmp/receiptvault-main.tgz
+id receiptvault >/dev/null 2>&1 && chown -R receiptvault:receiptvault "$APP/frontend" "$APP/backend/app" "$APP/deploy" || true
+chmod +x "$APP/deploy/"*.sh "$APP/deploy/run-api.sh" 2>/dev/null || true
+command -v npm >/dev/null || apt-get install -y -qq npm >/dev/null
+echo "Building UI (a few minutes)"
+cd "$APP/frontend"
+if [[ -f package-lock.json ]]; then
+  npm ci --omit=optional || npm install --omit=optional
+else
+  npm install --omit=optional
+fi
+npx vite build
+chmod -R a+rX "$APP/frontend/dist"
+if [[ ! -f "$APP/frontend/dist/index.html" ]]; then
+  echo "ERROR: UI build did not produce frontend/dist/index.html"
+  exit 1
+fi
+echo "Unpacked ReceiptVault 1.4.0"
+EOS
+
 echo "Purging Caddy and binding ReceiptVault on port 80"
 pct exec "$CTID" -- env LANG=C.UTF-8 LC_ALL=C.UTF-8 \
   RV_IP="$LXC_IP" bash -s <<'EOS'
@@ -212,6 +260,7 @@ grep -q '^RECEIPTVAULT_PUBLIC_URL=' "$ENV" && sed -i "s|^RECEIPTVAULT_PUBLIC_URL
 grep -q '^RECEIPTVAULT_LAN_PORT=' "$ENV" && sed -i "s|^RECEIPTVAULT_LAN_PORT=.*|RECEIPTVAULT_LAN_PORT=80|" "$ENV" || echo "RECEIPTVAULT_LAN_PORT=80" >>"$ENV"
 grep -q '^RECEIPTVAULT_API_HOST=' "$ENV" && sed -i "s|^RECEIPTVAULT_API_HOST=.*|RECEIPTVAULT_API_HOST=0.0.0.0|" "$ENV" || echo "RECEIPTVAULT_API_HOST=0.0.0.0" >>"$ENV"
 grep -q '^RECEIPTVAULT_API_PORT=' "$ENV" && sed -i "s|^RECEIPTVAULT_API_PORT=.*|RECEIPTVAULT_API_PORT=80|" "$ENV" || echo "RECEIPTVAULT_API_PORT=80" >>"$ENV"
+grep -q '^RECEIPTVAULT_APP_VERSION=' "$ENV" && sed -i "s|^RECEIPTVAULT_APP_VERSION=.*|RECEIPTVAULT_APP_VERSION=1.4.0|" "$ENV" || echo "RECEIPTVAULT_APP_VERSION=1.4.0" >>"$ENV"
 
 mkdir -p "$APP/deploy"
 cat >"$APP/deploy/run-api.sh" <<'RUN'
@@ -302,12 +351,12 @@ if echo "$page" | grep -qi 'Your web server is working'; then
   ss -lntp || true
   exit 1
 fi
-echo "App is up on http://${IP}/"
+echo "App is up on http://${IP}/  version 1.4.0"
 EOS
 
 echo
 echo "==== From inside the LXC ===="
-pct exec "$CTID" -- bash -lc 'ss -lntp | grep -E ":80 |caddy|uvicorn" || true; curl -sS -o /dev/null -w "local http://127.0.0.1/  %{http_code}\n" http://127.0.0.1/health/live || true'
+pct exec "$CTID" -- bash -lc 'ss -lntp | grep -E ":80 |caddy|uvicorn" || true; echo -n "health: "; curl -sS http://127.0.0.1/health/live; echo'
 echo "==== From the Proxmox host ===="
 CODE="$(curl -sS -o /tmp/rv-fix-body -w '%{http_code}' --connect-timeout 5 "http://${LXC_IP}/" || echo 000)"
 echo "http://${LXC_IP}/  -> HTTP ${CODE}"
@@ -322,4 +371,5 @@ fi
 echo
 echo "Open this in the browser (no port number):"
 echo "  http://${LXC_IP}/"
-echo "Hard-refresh the tab (Ctrl+Shift+R) so it does not show a cached Caddy page."
+echo "Hard-refresh the tab (Ctrl+Shift+R)."
+echo "The sidebar and Settings must show 1.4.0 — if they still say 1.0.0, the old script ran, not this one."

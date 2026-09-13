@@ -1,6 +1,6 @@
 [project]
 name = "receiptvault"
-version = "1.0.0"
+version = "1.4.0"
 description = "Private self-hosted receipt and invoice evidence locker"
 readme = "README.md"
 requires-python = ">=3.12"

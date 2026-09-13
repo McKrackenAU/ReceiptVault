@@ -12,7 +12,7 @@
 #   RECEIPTVAULT_REPO=https://github.com/McKrackenAU/ReceiptVault.git bash /root/install-receiptvault.sh
 set -euo pipefail
 
-VERSION="1.3.0"
+VERSION="1.4.0"
 APP="ReceiptVault"
 REPO_URL="${RECEIPTVAULT_REPO:-https://github.com/McKrackenAU/ReceiptVault.git}"
 REPO_REF="${RECEIPTVAULT_REF:-main}"
@@ -376,14 +376,33 @@ if [[ "$MODE" == "repair" || "$MODE" == "update" || "$MODE" == "backup" || "$MOD
       exit 0
       ;;
     update)
-      PRE="$(pct exec "$CTID" -- git -C /opt/receiptvault rev-parse HEAD)"
-      pct exec "$CTID" -- bash -lc "cd /opt/receiptvault && git fetch --tags origin && git checkout ${REPO_REF} && git pull --ff-only origin ${REPO_REF}"
-      if ! pct exec "$CTID" -- bash /opt/receiptvault/deploy/lxc-bootstrap.sh; then
-        pct exec "$CTID" -- git -C /opt/receiptvault checkout "$PRE"
-        msg "Update failed health/bootstrap. Application tree rolled back to ${PRE}."
+      TGZ=/tmp/receiptvault-main.tgz
+      echo "Downloading ${REPO_URL} (${REPO_REF}) on the Proxmox host"
+      wget --no-cache -O "$TGZ" "https://github.com/McKrackenAU/ReceiptVault/archive/refs/heads/${REPO_REF}.tar.gz"
+      if ! gzip -t "$TGZ" 2>/dev/null; then
+        msg "GitHub download failed. The LXC has no git repo, so updates must come from the host."
         exit 1
       fi
-      msg "Updated CT $CTID to ${REPO_REF}."
+      pct push "$CTID" "$TGZ" /tmp/receiptvault-main.tgz
+      pct exec "$CTID" -- env LANG=C.UTF-8 LC_ALL=C.UTF-8 bash -s <<'EOS'
+set -euo pipefail
+APP=/opt/receiptvault
+rm -rf /tmp/ReceiptVault-main
+tar -xzf /tmp/receiptvault-main.tgz -C /tmp
+SRC="$(find /tmp -maxdepth 1 -type d -name 'ReceiptVault-*' | head -n 1)"
+test -d "$SRC/backend"
+cp -a "$SRC/." "$APP/"
+rm -rf "$SRC" /tmp/receiptvault-main.tgz
+ENV=/etc/receiptvault/receiptvault.env
+if [[ -f "$ENV" ]]; then
+  grep -q '^RECEIPTVAULT_APP_VERSION=' "$ENV" && sed -i 's|^RECEIPTVAULT_APP_VERSION=.*|RECEIPTVAULT_APP_VERSION=1.4.0|' "$ENV" || echo 'RECEIPTVAULT_APP_VERSION=1.4.0' >>"$ENV"
+fi
+EOS
+      if ! pct exec "$CTID" -- bash /opt/receiptvault/deploy/lxc-bootstrap.sh; then
+        msg "Update failed health/bootstrap. See /var/tmp/receiptvault-install.log"
+        exit 1
+      fi
+      msg "Updated CT $CTID to ${VERSION}. Hard-refresh http://192.168.13.13/ — Settings must show ${VERSION}."
       exit 0
       ;;
     backup)
@@ -558,6 +577,7 @@ RECEIPTVAULT_STAGING_ROOT=/var/lib/receiptvault/staging
 RECEIPTVAULT_BACKUP_ROOT=/var/lib/receiptvault/backups
 RECEIPTVAULT_COOKIE_SECURE=false
 RECEIPTVAULT_GRAPH_MOCK=false
+RECEIPTVAULT_APP_VERSION=${VERSION}
 RECEIPTVAULT_MS_TENANT=common
 RECEIPTVAULT_STATIC_CIDR=${STATIC_CIDR}
 RECEIPTVAULT_GATEWAY=${GW}
