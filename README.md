@@ -54,7 +54,7 @@ On the Proxmox host, as root — after the repo is on GitHub — either:
 
 ```bash
 wget -O /root/install-receiptvault.sh \
-  https://raw.githubusercontent.com/<YOUR_GITHUB_USER>/receiptvault/main/deploy/install-receiptvault.sh
+  https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/install-receiptvault.sh
 less /root/install-receiptvault.sh
 bash /root/install-receiptvault.sh
 ```
@@ -62,7 +62,7 @@ bash /root/install-receiptvault.sh
 or the helper-script one-liner (inspect the URL first; never put secrets on this line):
 
 ```bash
-bash -c "$(wget -qLO - https://raw.githubusercontent.com/<YOUR_GITHUB_USER>/receiptvault/main/deploy/install-receiptvault.sh)"
+bash -c "$(wget -qLO - https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/install-receiptvault.sh)"
 ```
 
 The helper creates an unprivileged Debian 13 LXC (4 vCPU / 8 GB / 32 GB by default), installs PostgreSQL, Redis, Caddy, OCR, and ReceiptVault, then prints `http://<lxc-ip>:8080`. Create the owner there. No source edits.

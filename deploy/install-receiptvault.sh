@@ -1,21 +1,20 @@
 #!/usr/bin/env bash
 # ReceiptVault — Proxmox helper-script installer
 # Safe sequence (recommended):
-#   wget -O /root/install-receiptvault.sh https://raw.githubusercontent.com/<user>/receiptvault/main/deploy/install-receiptvault.sh
+#   wget -O /root/install-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/install-receiptvault.sh
 #   less /root/install-receiptvault.sh
 #   bash /root/install-receiptvault.sh
 #
 # Convenient one-liner (inspect the URL first; never put tokens on this line):
-#   bash -c "$(wget -qLO - https://raw.githubusercontent.com/<user>/receiptvault/main/deploy/install-receiptvault.sh)"
+#   bash -c "$(wget -qLO - https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/install-receiptvault.sh)"
 #
 # Override the Git source if needed:
-#   RECEIPTVAULT_REPO=https://github.com/<user>/receiptvault.git bash /root/install-receiptvault.sh
+#   RECEIPTVAULT_REPO=https://github.com/McKrackenAU/ReceiptVault.git bash /root/install-receiptvault.sh
 set -euo pipefail
 
 VERSION="1.0.0"
 APP="ReceiptVault"
-# Change this after you publish the GitHub repo, or pass RECEIPTVAULT_REPO=
-REPO_URL="${RECEIPTVAULT_REPO:-https://github.com/williamdornay/receiptvault.git}"
+REPO_URL="${RECEIPTVAULT_REPO:-https://github.com/McKrackenAU/ReceiptVault.git}"
 REPO_REF="${RECEIPTVAULT_REF:-main}"
 LOG="/var/tmp/receiptvault-install.log"
 MARKER_KEY="receiptvault.installed"

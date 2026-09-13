@@ -2,39 +2,27 @@
 
 Helper-script style, same idea as the community Proxmox scripts: run **as root in the Proxmox shell**, answer a few `whiptail` screens, get an unprivileged Debian 13 LXC.
 
-## 1. Put the project on GitHub (once)
+## 1. Source repository
 
-This environment cannot log in to GitHub for you. On a machine where `gh` is authenticated (your PC):
-
-```powershell
-# PowerShell — from a clone of this project
-cd $HOME\path\to\receiptvault
-gh auth login
-gh repo create receiptvault --public --source=. --remote=github --push
-```
-
-Use your GitHub username. The clone URL will be:
+Public GitHub source:
 
 ```text
-https://github.com/<YOUR_GITHUB_USER>/receiptvault.git
+https://github.com/McKrackenAU/ReceiptVault.git
 ```
 
-If `gh` is not installed, create an empty public repo named `receiptvault` on github.com, then:
+If you need a fresh local copy on Windows, clone in **WSL** (Origin CLI is not available in PowerShell):
 
-```powershell
-git remote add github https://github.com/<YOUR_GITHUB_USER>/receiptvault.git
-git push -u github main
+```bash
+git clone https://github.com/McKrackenAU/ReceiptVault.git
 ```
 
-## 2. Type this on the Proxmox host (after the repo is public)
-
-Replace `<YOUR_GITHUB_USER>` with your GitHub username.
+## 2. Type this on the Proxmox host
 
 **Safer (download, read, then run):**
 
 ```bash
 wget -O /root/install-receiptvault.sh \
-  https://raw.githubusercontent.com/<YOUR_GITHUB_USER>/receiptvault/main/deploy/install-receiptvault.sh
+  https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/install-receiptvault.sh
 less /root/install-receiptvault.sh
 bash /root/install-receiptvault.sh
 ```
@@ -42,13 +30,13 @@ bash /root/install-receiptvault.sh
 **Convenient one-liner (community-scripts style).** Inspect the URL first. Do **not** put mailbox passwords or tunnel tokens on this line:
 
 ```bash
-bash -c "$(wget -qLO - https://raw.githubusercontent.com/<YOUR_GITHUB_USER>/receiptvault/main/deploy/install-receiptvault.sh)"
+bash -c "$(wget -qLO - https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/install-receiptvault.sh)"
 ```
 
-If your GitHub user is different from the default baked into the script, either edit the clone URL on the Advanced screen or:
+To install from a different fork:
 
 ```bash
-RECEIPTVAULT_REPO=https://github.com/<YOUR_GITHUB_USER>/receiptvault.git \
+RECEIPTVAULT_REPO=https://github.com/<FORK_USER>/ReceiptVault.git \
 bash /root/install-receiptvault.sh
 ```
 
