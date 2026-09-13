@@ -34,6 +34,7 @@ def test_installer_shell_syntax():
     _bash_n(DEPLOY / "fix-from-host.sh")
     _bash_n(DEPLOY / "ensure-db.sh")
     _bash_n(DEPLOY / "purge-caddy.sh")
+    _bash_n(DEPLOY / "update-from-host.sh")
 
 
 def test_bootstrap_and_network_scripts_syntax():
