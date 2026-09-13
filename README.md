@@ -72,12 +72,12 @@ Do not put mailbox passwords or tunnel tokens on the wget line. Cloudflare token
 If an existing CT is not reachable, run this **on the Proxmox host**:
 
 ```bash
-wget -O /root/fix-receiptvault.sh \
+wget --no-cache -O /root/fix-receiptvault.sh \
   https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh
 bash /root/fix-receiptvault.sh
 ```
 
-Then open **http://192.168.13.13/** (or the IP you installed with). No port number.
+The first line of output must say `access fix 1.2.0`. Then open **http://192.168.13.13/** and hard-refresh (Ctrl+Shift+R).
 
 ## Operator commands
 

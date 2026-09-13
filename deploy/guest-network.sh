@@ -37,7 +37,7 @@ if [[ -n "$DNS" ]]; then
   printf 'nameserver %s\n' "$DNS" >/etc/resolv.conf
 fi
 
-# Allow Caddy to bind :80 in an unprivileged LXC.
+# Allow the app to bind :80 in an unprivileged LXC.
 if [[ -d /proc/sys/net/ipv4 ]]; then
   sysctl -w net.ipv4.ip_unprivileged_port_start=0 >/dev/null 2>&1 || true
   mkdir -p /etc/sysctl.d

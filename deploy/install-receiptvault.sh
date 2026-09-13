@@ -12,7 +12,7 @@
 #   RECEIPTVAULT_REPO=https://github.com/McKrackenAU/ReceiptVault.git bash /root/install-receiptvault.sh
 set -euo pipefail
 
-VERSION="1.1.0"
+VERSION="1.2.0"
 APP="ReceiptVault"
 REPO_URL="${RECEIPTVAULT_REPO:-https://github.com/McKrackenAU/ReceiptVault.git}"
 REPO_REF="${RECEIPTVAULT_REF:-main}"
@@ -202,8 +202,12 @@ ip -4 addr show dev "$IFACE" | grep -q "inet ${ADDR}/"
 EOS
 }
 
-disable_guest_caddy() {
-  pct exec "$CTID" -- bash -lc 'systemctl disable --now caddy >/dev/null 2>&1 || true; systemctl mask caddy >/dev/null 2>&1 || true'
+purge_guest_caddy() {
+  if pct exec "$CTID" -- test -f /opt/receiptvault/deploy/purge-caddy.sh; then
+    pct exec "$CTID" -- bash /opt/receiptvault/deploy/purge-caddy.sh >>"$LOG" 2>&1 || true
+  else
+    pct exec "$CTID" -- bash -lc 'systemctl disable --now caddy >/dev/null 2>&1 || true; systemctl mask caddy >/dev/null 2>&1 || true; apt-get purge -y caddy >/dev/null 2>&1 || true; rm -rf /etc/caddy /usr/share/caddy; pkill -9 caddy >/dev/null 2>&1 || true; fuser -k 80/tcp >/dev/null 2>&1 || true' >>"$LOG" 2>&1 || true
+  fi
 }
 
 prepare_guest_locale() {
@@ -499,17 +503,12 @@ rm -f "$STATUS"
     ACCESS_IP="$(pct exec "$CTID" -- hostname -I | awk '{print $1}')"
   fi
   PUBLIC="$(public_url_for "$ACCESS_IP" "$APPPORT")"
-  if [[ "$APPPORT" == "80" ]]; then
-    INTERNAL_PORT=8082
-  else
-    INTERNAL_PORT="$APPPORT"
-  fi
   pct exec "$CTID" -- tee /etc/receiptvault/receiptvault.env >/dev/null <<ENVEOF
 RECEIPTVAULT_ENV=production
 RECEIPTVAULT_PUBLIC_URL=${PUBLIC}
-RECEIPTVAULT_LAN_PORT=${INTERNAL_PORT}
+RECEIPTVAULT_LAN_PORT=${APPPORT}
 RECEIPTVAULT_API_HOST=0.0.0.0
-RECEIPTVAULT_API_PORT=${INTERNAL_PORT}
+RECEIPTVAULT_API_PORT=${APPPORT}
 RECEIPTVAULT_TIMEZONE=Australia/Melbourne
 RECEIPTVAULT_MASTER_KEY=${MASTER}
 RECEIPTVAULT_DATABASE_URL=postgresql+psycopg://receiptvault:${DBPASS}@127.0.0.1:5432/receiptvault
@@ -537,7 +536,7 @@ ENVEOF
   fi
   PUBLIC="$(public_url_for "$ACCESS_IP" "$APPPORT")"
   update_public_url "$PUBLIC"
-  disable_guest_caddy || true
+  purge_guest_caddy || true
   pct exec "$CTID" -- systemctl restart receiptvault >>"$LOG" 2>&1 || true
   pct exec "$CTID" -- bash -lc "echo ${MARKER_KEY}=${VERSION} > /opt/receiptvault/.installed"
   echo 100

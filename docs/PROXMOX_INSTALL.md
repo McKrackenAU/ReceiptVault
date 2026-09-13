@@ -80,10 +80,12 @@ The helper detects the local tree and copies it into the LXC instead of cloning.
 On the Proxmox host:
 
 ```bash
-wget -O /root/fix-receiptvault.sh \
+wget --no-cache -O /root/fix-receiptvault.sh \
   https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh
 bash /root/fix-receiptvault.sh
 ```
+
+The script must print `access fix 1.2.0`. It **purges Caddy** and binds ReceiptVault on port 80.
 
 Then open **http://192.168.13.13/** (or the IP you entered). The LXC uses the gateway you entered for internet (mailbox scan).
 

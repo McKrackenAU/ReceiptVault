@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Run as root on the Proxmox HOST (the shell that has pct).
 #
-#   wget -O /root/fix-receiptvault.sh \
+#   wget --no-cache -O /root/fix-receiptvault.sh \
 #     https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh
 #   bash /root/fix-receiptvault.sh
 #
-# Puts ReceiptVault on the LXC IP you already chose and serves
-# http://<that-ip>/  (port 80, same as every other helper-script CT).
+# Purges Caddy and puts ReceiptVault on http://<lxc-ip>/
+echo "ReceiptVault access fix 1.2.0 — purge Caddy, app binds :80"
 set -euo pipefail
-export LANG=C.UTF-8 LC_ALL=C.UTF-8
+export LANG=C.UTF-8 LC_ALL=C.UTF-8 DEBIAN_FRONTEND=noninteractive
 
 if [[ ${EUID} -ne 0 ]] || ! command -v pct >/dev/null; then
   echo "Run as root on the Proxmox host (the shell that has pct)."
@@ -21,7 +21,6 @@ LXC_GW="${3:-${RECEIPTVAULT_GATEWAY:-192.168.1.1}}"
 BRIDGE="${RECEIPTVAULT_BRIDGE:-vmbr0}"
 DNS="${RECEIPTVAULT_DNS:-1.1.1.1}"
 
-# Same rule as the installer: pick a prefix that contains both the IP and the gateway.
 LXC_CIDR="$(python3 - "$LXC_IP" "$LXC_GW" <<'PY'
 import ipaddress, sys
 ip = ipaddress.ip_address(sys.argv[1])
@@ -77,14 +76,13 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 
-echo "Setting ${LXC_CIDR} via ${LXC_GW} inside the LXC"
+echo "Setting ${LXC_CIDR} via ${LXC_GW}"
 pct exec "$CTID" -- env LANG=C.UTF-8 LC_ALL=C.UTF-8 \
   RV_CIDR="$LXC_CIDR" RV_GATEWAY="$LXC_GW" RV_DNS="$DNS" bash -s <<'EOS'
 set -euo pipefail
 IFACE=eth0
 CIDR="$RV_CIDR"
 GW="$RV_GATEWAY"
-ADDR="${CIDR%%/*}"
 cat >/etc/network/interfaces <<EOF
 auto lo
 iface lo inet loopback
@@ -103,29 +101,33 @@ ip link set "$IFACE" up || true
 ip addr flush dev "$IFACE" 2>/dev/null || true
 ip addr add "$CIDR" dev "$IFACE"
 ip route replace default via "$GW" dev "$IFACE" 2>/dev/null || true
-ip -4 addr show dev "$IFACE"
-ip route
 EOS
 
 if ! pct exec "$CTID" -- test -d /opt/receiptvault/backend; then
-  echo "This CT has no /opt/receiptvault. The first install did not finish."
-  echo "Re-run the helper installer (Default install) and enter this IP when asked."
+  echo "This CT has no /opt/receiptvault. Re-run the helper installer."
   exit 1
 fi
 
-echo "Stopping Caddy; serving ReceiptVault on http://${LXC_IP}/"
+echo "Purging Caddy and binding ReceiptVault on port 80"
 pct exec "$CTID" -- env LANG=C.UTF-8 LC_ALL=C.UTF-8 \
   RV_IP="$LXC_IP" bash -s <<'EOS'
 set -euo pipefail
 export PATH="/usr/local/bin:/usr/bin:$PATH"
+export DEBIAN_FRONTEND=noninteractive
 APP=/opt/receiptvault
 ENV=/etc/receiptvault/receiptvault.env
 IP="$RV_IP"
 PUBLIC="http://${IP}"
 
-systemctl disable --now caddy >/dev/null 2>&1 || true
-systemctl mask caddy >/dev/null 2>&1 || true
+systemctl disable --now caddy.service caddy.socket receiptvault-http80.service >/dev/null 2>&1 || true
+systemctl mask caddy.service caddy.socket >/dev/null 2>&1 || true
+pkill -9 caddy >/dev/null 2>&1 || true
 fuser -k 80/tcp >/dev/null 2>&1 || true
+apt-get purge -y caddy >/dev/null 2>&1 || dpkg --purge caddy >/dev/null 2>&1 || true
+rm -rf /etc/caddy /usr/share/caddy /var/lib/caddy
+rm -f /usr/bin/caddy /usr/local/bin/caddy
+apt-mark hold caddy >/dev/null 2>&1 || true
+systemctl daemon-reload >/dev/null 2>&1 || true
 
 id receiptvault >/dev/null 2>&1 || useradd --system --home "$APP" --shell /usr/sbin/nologin receiptvault
 chown -R receiptvault:receiptvault "$APP" /var/lib/receiptvault 2>/dev/null || true
@@ -153,9 +155,9 @@ if [[ ! -f "$ENV" ]]; then
   exit 1
 fi
 grep -q '^RECEIPTVAULT_PUBLIC_URL=' "$ENV" && sed -i "s|^RECEIPTVAULT_PUBLIC_URL=.*|RECEIPTVAULT_PUBLIC_URL=${PUBLIC}|" "$ENV" || echo "RECEIPTVAULT_PUBLIC_URL=${PUBLIC}" >>"$ENV"
-grep -q '^RECEIPTVAULT_LAN_PORT=' "$ENV" && sed -i "s|^RECEIPTVAULT_LAN_PORT=.*|RECEIPTVAULT_LAN_PORT=8082|" "$ENV" || echo "RECEIPTVAULT_LAN_PORT=8082" >>"$ENV"
+grep -q '^RECEIPTVAULT_LAN_PORT=' "$ENV" && sed -i "s|^RECEIPTVAULT_LAN_PORT=.*|RECEIPTVAULT_LAN_PORT=80|" "$ENV" || echo "RECEIPTVAULT_LAN_PORT=80" >>"$ENV"
 grep -q '^RECEIPTVAULT_API_HOST=' "$ENV" && sed -i "s|^RECEIPTVAULT_API_HOST=.*|RECEIPTVAULT_API_HOST=0.0.0.0|" "$ENV" || echo "RECEIPTVAULT_API_HOST=0.0.0.0" >>"$ENV"
-grep -q '^RECEIPTVAULT_API_PORT=' "$ENV" && sed -i "s|^RECEIPTVAULT_API_PORT=.*|RECEIPTVAULT_API_PORT=8082|" "$ENV" || echo "RECEIPTVAULT_API_PORT=8082" >>"$ENV"
+grep -q '^RECEIPTVAULT_API_PORT=' "$ENV" && sed -i "s|^RECEIPTVAULT_API_PORT=.*|RECEIPTVAULT_API_PORT=80|" "$ENV" || echo "RECEIPTVAULT_API_PORT=80" >>"$ENV"
 
 mkdir -p "$APP/deploy"
 cat >"$APP/deploy/run-api.sh" <<'RUN'
@@ -164,62 +166,19 @@ set -euo pipefail
 cd /opt/receiptvault/backend
 exec /opt/receiptvault/backend/.venv/bin/uvicorn app.main:app \
   --host "${RECEIPTVAULT_API_HOST:-0.0.0.0}" \
-  --port "${RECEIPTVAULT_API_PORT:-${RECEIPTVAULT_LAN_PORT:-8082}}"
+  --port "${RECEIPTVAULT_API_PORT:-${RECEIPTVAULT_LAN_PORT:-80}}"
 RUN
 chmod 0755 "$APP/deploy/run-api.sh"
-
-cat >"$APP/deploy/lan-http80.sh" <<'RUN'
-#!/usr/bin/env bash
-set -euo pipefail
-PORT="${RECEIPTVAULT_API_PORT:-${RECEIPTVAULT_LAN_PORT:-8082}}"
-export RV_HTTP80_TARGET="$PORT"
-exec python3 - <<'PY'
-import os, socket, threading
-target = int(os.environ["RV_HTTP80_TARGET"])
-def pump(src, dst):
-    try:
-        while True:
-            data = src.recv(65536)
-            if not data:
-                break
-            dst.sendall(data)
-    except OSError:
-        pass
-    finally:
-        for sock in (src, dst):
-            try:
-                sock.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
-            try:
-                sock.close()
-            except OSError:
-                pass
-listen = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-listen.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-listen.bind(("0.0.0.0", 80))
-listen.listen(128)
-while True:
-    client, _ = listen.accept()
-    try:
-        upstream = socket.create_connection(("127.0.0.1", target), timeout=10)
-    except OSError:
-        client.close()
-        continue
-    threading.Thread(target=pump, args=(client, upstream), daemon=True).start()
-    threading.Thread(target=pump, args=(upstream, client), daemon=True).start()
-PY
-RUN
-chmod 0755 "$APP/deploy/lan-http80.sh"
 
 cat >/etc/systemd/system/receiptvault.service <<'UNIT'
 [Unit]
 Description=ReceiptVault
 After=network.target postgresql.service redis-server.service
+Wants=postgresql.service redis-server.service
 [Service]
 Type=simple
-User=receiptvault
-Group=receiptvault
+User=root
+Group=root
 EnvironmentFile=/etc/receiptvault/receiptvault.env
 WorkingDirectory=/opt/receiptvault/backend
 ExecStart=/opt/receiptvault/deploy/run-api.sh
@@ -227,20 +186,8 @@ Restart=on-failure
 [Install]
 WantedBy=multi-user.target
 UNIT
-
-cat >/etc/systemd/system/receiptvault-http80.service <<'UNIT'
-[Unit]
-Description=ReceiptVault HTTP port 80
-After=receiptvault.service
-Wants=receiptvault.service
-[Service]
-Type=simple
-EnvironmentFile=-/etc/receiptvault/receiptvault.env
-ExecStart=/opt/receiptvault/deploy/lan-http80.sh
-Restart=on-failure
-[Install]
-WantedBy=multi-user.target
-UNIT
+systemctl disable --now receiptvault-http80.service >/dev/null 2>&1 || true
+rm -f /etc/systemd/system/receiptvault-http80.service
 
 systemctl daemon-reload
 systemctl enable --now postgresql redis-server >/dev/null 2>&1 || true
@@ -275,17 +222,29 @@ psql("-d", database, "-c", f"GRANT ALL ON SCHEMA public TO {user}; ALTER DATABAS
 print("database ready")
 PY
 fi
-systemctl enable receiptvault receiptvault-http80 >/dev/null
+
+fuser -k 80/tcp >/dev/null 2>&1 || true
+systemctl enable receiptvault >/dev/null
 systemctl restart receiptvault
-systemctl restart receiptvault-http80
 
 ok=0
 for _ in $(seq 1 40); do
-  curl -fsS "http://127.0.0.1:80/health/live" >/dev/null 2>&1 && ok=1 && break
+  body="$(curl -fsS http://127.0.0.1/health/live 2>/dev/null || true)"
+  if [[ "$body" == *ok* ]]; then
+    ok=1
+    break
+  fi
   sleep 1
 done
 if [[ "$ok" -ne 1 ]]; then
-  journalctl -u receiptvault -u receiptvault-http80 -n 50 --no-pager || true
+  journalctl -u receiptvault -n 60 --no-pager || true
+  ss -lntp || true
+  exit 1
+fi
+
+page="$(curl -fsS http://127.0.0.1/ 2>/dev/null || true)"
+if echo "$page" | grep -qi 'Your web server is working'; then
+  echo "Port 80 is still the Caddy welcome page."
   ss -lntp || true
   exit 1
 fi
@@ -294,20 +253,19 @@ EOS
 
 echo
 echo "==== From inside the LXC ===="
-pct exec "$CTID" -- bash -lc "ss -lntp | grep -E ':80 |:8082' || true; curl -sS -o /dev/null -w 'local http://127.0.0.1/  %{http_code}\n' http://127.0.0.1/health/live || true"
+pct exec "$CTID" -- bash -lc 'ss -lntp | grep -E ":80 |caddy|uvicorn" || true; curl -sS -o /dev/null -w "local http://127.0.0.1/  %{http_code}\n" http://127.0.0.1/health/live || true'
 echo "==== From the Proxmox host ===="
 CODE="$(curl -sS -o /tmp/rv-fix-body -w '%{http_code}' --connect-timeout 5 "http://${LXC_IP}/" || echo 000)"
 echo "http://${LXC_IP}/  -> HTTP ${CODE}"
-head -c 200 /tmp/rv-fix-body 2>/dev/null; echo
+head -c 240 /tmp/rv-fix-body 2>/dev/null; echo
 
-if [[ "$CODE" != "200" ]]; then
-  echo "Host could not open http://${LXC_IP}/ — container net:"
-  pct exec "$CTID" -- ip -4 addr
-  pct exec "$CTID" -- ip route
-  pct exec "$CTID" -- journalctl -u receiptvault -u receiptvault-http80 -n 30 --no-pager || true
+if [[ "$CODE" != "200" ]] || grep -qi 'Your web server is working\|Congratulations' /tmp/rv-fix-body 2>/dev/null; then
+  echo "Host did not get the ReceiptVault page from http://${LXC_IP}/"
+  pct exec "$CTID" -- bash -lc 'command -v caddy; dpkg -l caddy 2>/dev/null | tail -1; ss -lntp; journalctl -u receiptvault -n 40 --no-pager' || true
   exit 1
 fi
 
 echo
 echo "Open this in the browser (no port number):"
 echo "  http://${LXC_IP}/"
+echo "Hard-refresh the tab (Ctrl+Shift+R) so it does not show a cached Caddy page."

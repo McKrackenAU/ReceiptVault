@@ -15,10 +15,15 @@ def test_systemd_uses_run_api_script():
     api = (DEPLOY / "systemd/receiptvault.service").read_text()
     worker = (DEPLOY / "systemd/receiptvault-worker.service").read_text()
     assert "ExecStart=/opt/receiptvault/deploy/run-api.sh" in api
+    assert "User=root" in api
     assert "/opt/receiptvault/backend/.venv/bin/dramatiq" in worker
     assert "127.0.0.1 --port 8473" not in api
-    http80 = (DEPLOY / "systemd/receiptvault-http80.service").read_text()
-    assert "ExecStart=/opt/receiptvault/deploy/lan-http80.sh" in http80
+    assert not (DEPLOY / "systemd/receiptvault-http80.service").exists()
+    run_api = (DEPLOY / "run-api.sh").read_text()
+    assert 'PORT="${RECEIPTVAULT_API_PORT:-${RECEIPTVAULT_LAN_PORT:-80}}"' in run_api
+    bootstrap = (DEPLOY / "lxc-bootstrap.sh").read_text()
+    assert "caddy tesseract" not in bootstrap
+    assert "purge-caddy.sh" in bootstrap
 
 
 def test_installer_shell_syntax():
@@ -28,7 +33,7 @@ def test_installer_shell_syntax():
     _bash_n(DEPLOY / "run-api.sh")
     _bash_n(DEPLOY / "fix-from-host.sh")
     _bash_n(DEPLOY / "ensure-db.sh")
-    _bash_n(DEPLOY / "lan-http80.sh")
+    _bash_n(DEPLOY / "purge-caddy.sh")
 
 
 def test_bootstrap_and_network_scripts_syntax():

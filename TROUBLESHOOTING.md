@@ -16,14 +16,14 @@ wget -O /root/fix-receiptvault.sh \
 bash /root/fix-receiptvault.sh
 ```
 
-That puts ReceiptVault on port 80 at the LXC IP and stops Caddy (Caddy’s default page is not the app).
+That **purges Caddy** (so the welcome page cannot come back) and binds ReceiptVault on port 80. Hard-refresh the browser (Ctrl+Shift+R).
 
 ## App will not start
 
 - `password authentication failed for user "receiptvault"` means the URL in `/etc/receiptvault/receiptvault.env` does not match Postgres. Re-run `fix-from-host.sh`, or inside the CT: `bash /opt/receiptvault/deploy/ensure-db.sh && systemctl restart receiptvault`.
 - `pg_isready` and `redis-cli ping` should succeed.
 - `RECEIPTVAULT_DATABASE_URL` must use the `postgresql+psycopg://` scheme.
-- `journalctl -u receiptvault -u receiptvault-http80 -u receiptvault-worker` on production.
+- `journalctl -u receiptvault -u receiptvault-worker` on production.
 
 ## First-run setup already claimed
 

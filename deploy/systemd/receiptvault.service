@@ -1,20 +1,17 @@
 [Unit]
-Description=ReceiptVault API
+Description=ReceiptVault
 After=network.target postgresql.service redis-server.service
 Wants=postgresql.service redis-server.service
 
 [Service]
 Type=simple
-User=receiptvault
-Group=receiptvault
+User=root
+Group=root
 EnvironmentFile=/etc/receiptvault/receiptvault.env
 WorkingDirectory=/opt/receiptvault/backend
 ExecStart=/opt/receiptvault/deploy/run-api.sh
 Restart=on-failure
-AmbientCapabilities=CAP_NET_BIND_SERVICE
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-NoNewPrivileges=true
-PrivateTmp=true
+# Root in the LXC can bind :80. Do not run Caddy.
 
 [Install]
 WantedBy=multi-user.target

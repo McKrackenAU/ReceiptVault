@@ -3,24 +3,25 @@
 ReceiptVault is a maintainable monolith: one FastAPI process serves `/api/v1` and the built React UI, plus a Dramatiq worker for long-running jobs.
 
 ```text
-Browser ──► Caddy :8080 ──► FastAPI :8473
-                               │
-                    PostgreSQL 16     Redis
-                               │
-                         Dramatiq worker
-                               │
-              evidence/  derived/  staging/  backups/
+Browser ──► FastAPI :80
+                 │
+      PostgreSQL 16     Redis
+                 │
+           Dramatiq worker
+                 │
+    evidence/  derived/  staging/  backups/
 ```
+
+Caddy is not used. Debian's Caddy package takes port 80 for a welcome page.
 
 ## Processes
 
 | Unit | Role |
 | --- | --- |
-| `receiptvault.service` | FastAPI / UI |
+| `receiptvault.service` | FastAPI / UI on `:80` |
 | `receiptvault-worker.service` | Dramatiq consumer (scan, package, export, cleanup) |
 | `postgresql` | System of record |
 | `redis-server` | Queue broker |
-| `caddy` | LAN :8080 reverse proxy |
 | optional `cloudflared` | Tunnel connector |
 
 ## Data flow

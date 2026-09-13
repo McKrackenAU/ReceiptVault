@@ -5,7 +5,7 @@ Decisions below are not prescribed by `CURSOR_BUILD_REQUIREMENTS.md`. They exist
 | ID | Decision | Rationale | Date |
 | --- | --- | --- | --- |
 | D-001 | Background queue is **Dramatiq + Redis** | Lighter than Celery for a single-owner monolith, has retries/acks, and maps cleanly to systemd (`receiptvault-worker`). | 2026-09-13 |
-| D-002 | Reverse proxy is **Caddy** | Automatic HTTPS when a public hostname is configured; simple `Caddyfile` for LAN `:8080`. | 2026-09-13 |
+| D-002 | **No Caddy.** FastAPI binds `:80` | Debian Caddy's default site stole port 80 (welcome page). The app listens on `:80` itself. HTTPS is Cloudflare Tunnel when wanted. | 2026-09-13 |
 | D-003 | ORM is **SQLAlchemy 2.0 (sync)** with Alembic | Sync sessions are simpler to share between FastAPI request handlers and Dramatiq workers than mixed async/sync engines. | 2026-09-13 |
 | D-004 | Frontend is **Vite + React + TypeScript + Tailwind CSS + shadcn/ui** | Requirements specified React + TypeScript; shadcn covers accessible primitives without a second component library. | 2026-09-13 |
 | D-005 | Microsoft authority defaults to `https://login.microsoftonline.com/common` | Required to support personal Hotmail/Outlook and work/school tenants with one registration. Documented in the Entra walkthrough. | 2026-09-13 |
@@ -21,7 +21,7 @@ Decisions below are not prescribed by `CURSOR_BUILD_REQUIREMENTS.md`. They exist
 | D-015 | Folder packages are **ZIP64 written to disk** then served via the same range/chunk download API | Avoids building multi-gigabyte archives in RAM (Cloudflare Free/Pro request body limit is 100 MB as of 2026-09-05). | 2026-09-13 |
 | D-016 | SPA CSRF uses a **session-bound token** exposed at `GET /api/v1/auth/csrf` and required as `X-CSRF-Token` | HttpOnly session cookie cannot be read by JS; the CSRF cookie/header pair covers state-changing browser calls. | 2026-09-13 |
 | D-017 | Sessions are stored hashed in PostgreSQL | Allows “log out all sessions” and survives restart without a separate session store. | 2026-09-13 |
-| D-018 | Local/dev bind is `0.0.0.0:8473` (API) and `0.0.0.0:18473` (Vite) | Avoids well-known ports. Production Caddy listens on `8080` as specified. | 2026-09-13 |
+| D-018 | Local/dev bind is `0.0.0.0:8473` (API) and `0.0.0.0:18473` (Vite) | Avoids well-known ports. Production FastAPI listens on `:80`. | 2026-09-13 |
 | D-019 | Python packaging via **uv** + `pyproject.toml` | Fast, lockable installs for Debian and this development environment. | 2026-09-13 |
 | D-020 | First-run wizard covers owner, timezone, storage check, Entra credentials, three inboxes, audit years, first scan | Satisfies the handover requirement that production must not need source edits. | 2026-09-13 |
 | D-021 | Cloudflare request sizing | Consulted Cloudflare Workers/platform limits (updated 2026-09-05): Free/Pro request body 100 MB. Default chunk 16 MiB stays well under that with protocol overhead. | 2026-09-13 |
