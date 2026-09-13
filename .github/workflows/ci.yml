@@ -1,0 +1,40 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: receiptvault
+          POSTGRES_PASSWORD: receiptvault_dev
+          POSTGRES_DB: receiptvault
+        ports: ["5432:5432"]
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Backend checks
+        working-directory: backend
+        env:
+          RECEIPTVAULT_DATABASE_URL: postgresql+psycopg://receiptvault:receiptvault_dev@127.0.0.1:5432/receiptvault
+          RECEIPTVAULT_MASTER_KEY: ci-master-key
+          RECEIPTVAULT_GRAPH_MOCK: "true"
+        run: |
+          uv sync --extra dev
+          uv run ruff check app tests
+          uv run bandit -q -r app -x tests
+          uv run pytest -q
+      - name: Frontend build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build

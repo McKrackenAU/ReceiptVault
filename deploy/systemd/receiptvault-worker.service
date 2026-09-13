@@ -1,0 +1,17 @@
+[Unit]
+Description=ReceiptVault Dramatiq worker
+After=network.target redis-server.service postgresql.service
+
+[Service]
+Type=simple
+User=receiptvault
+Group=receiptvault
+EnvironmentFile=/etc/receiptvault/receiptvault.env
+WorkingDirectory=/opt/receiptvault/backend
+ExecStart=/opt/receiptvault/.venv/bin/dramatiq app.workers.tasks
+Restart=on-failure
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

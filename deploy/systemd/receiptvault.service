@@ -1,0 +1,18 @@
+[Unit]
+Description=ReceiptVault API
+After=network.target postgresql.service redis-server.service
+Wants=postgresql.service redis-server.service
+
+[Service]
+Type=simple
+User=receiptvault
+Group=receiptvault
+EnvironmentFile=/etc/receiptvault/receiptvault.env
+WorkingDirectory=/opt/receiptvault
+ExecStart=/opt/receiptvault/.venv/bin/uvicorn app.main:app --app-dir /opt/receiptvault/backend --host 127.0.0.1 --port 8473
+Restart=on-failure
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
