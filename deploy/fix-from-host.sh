@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
 # Run as root on the Proxmox HOST (the shell that has pct).
-# Paste each line separately. Do not join them. Do not use backslash.
+# One line (safe for noVNC — no backslash, no $(...), do not pipe to bash):
 #
-#   pct list
-#   wget --no-cache -O /root/fix-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh
-#   bash /root/fix-receiptvault.sh
+#   wget --no-cache -O /root/fix-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh && bash /root/fix-receiptvault.sh
 #
-# If the script cannot find the CT, pass the CTID from pct list:
-#   bash /root/fix-receiptvault.sh 200
+# If the script cannot find the CT, add the CTID from pct list:
+#   wget --no-cache -O /root/fix-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh && bash /root/fix-receiptvault.sh 200
 #
 # Downloads ReceiptVault from GitHub on the HOST, unpacks it in the LXC,
 # purges Caddy, and binds the app on http://<lxc-ip>/

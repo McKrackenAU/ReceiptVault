@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-# Run as root on the Proxmox HOST. Paste each line separately.
-# Do not join them. Do not use backslash.
+# Run as root on the Proxmox HOST. One line (safe for noVNC):
 #
-#   wget --no-cache -O /root/update-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/update-from-host.sh
-#   bash /root/update-receiptvault.sh
+#   wget --no-cache -O /root/update-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/update-from-host.sh && bash /root/update-receiptvault.sh
 #
 # Downloads the tree on the HOST (which can reach GitHub), then copies it
 # into the LXC. The guest often cannot git-pull and sometimes cannot curl GitHub.
