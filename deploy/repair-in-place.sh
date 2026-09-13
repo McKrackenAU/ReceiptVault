@@ -3,5 +3,5 @@
 set -euo pipefail
 APP_ROOT="${APP_ROOT:-/opt/receiptvault}"
 IP="${1:-${RV_IP:-192.168.13.13}}"
-PORT="${2:-${RV_PORT:-8082}}"
+PORT="${2:-${RV_PORT:-80}}"
 exec bash "$APP_ROOT/deploy/make-reachable.sh" "$IP" "$PORT"

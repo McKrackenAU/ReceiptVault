@@ -17,6 +17,8 @@ def test_systemd_uses_run_api_script():
     assert "ExecStart=/opt/receiptvault/deploy/run-api.sh" in api
     assert "/opt/receiptvault/backend/.venv/bin/dramatiq" in worker
     assert "127.0.0.1 --port 8473" not in api
+    http80 = (DEPLOY / "systemd/receiptvault-http80.service").read_text()
+    assert "ExecStart=/opt/receiptvault/deploy/lan-http80.sh" in http80
 
 
 def test_installer_shell_syntax():
@@ -26,6 +28,7 @@ def test_installer_shell_syntax():
     _bash_n(DEPLOY / "run-api.sh")
     _bash_n(DEPLOY / "fix-from-host.sh")
     _bash_n(DEPLOY / "ensure-db.sh")
+    _bash_n(DEPLOY / "lan-http80.sh")
 
 
 def test_bootstrap_and_network_scripts_syntax():

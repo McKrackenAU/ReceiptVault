@@ -12,7 +12,7 @@
 #   RECEIPTVAULT_REPO=https://github.com/McKrackenAU/ReceiptVault.git bash /root/install-receiptvault.sh
 set -euo pipefail
 
-VERSION="1.0.1"
+VERSION="1.1.0"
 APP="ReceiptVault"
 REPO_URL="${RECEIPTVAULT_REPO:-https://github.com/McKrackenAU/ReceiptVault.git}"
 REPO_REF="${RECEIPTVAULT_REF:-main}"
@@ -274,7 +274,7 @@ menu() { $UI --title "$APP" --menu "$1" 22 78 12 "${@:2}" 3>&1 1>&2 2>&3; }
 msg() { $UI --title "$APP" --msgbox "$1" 18 78; }
 gauge() { $UI --title "$APP" --gauge "$1" 10 74 "$2"; }
 
-$UI --title "$APP $VERSION" --msgbox "Installs an unprivileged Debian LXC and ${APP}.\n\nTypical LAN:\n  LXC  192.168.13.13\n  Router  192.168.1.1  (internet / mailbox scan)\n  Open  http://192.168.13.13:8082/\n\nCaddy is not used on the LAN.\n\nSource: ${REPO_URL}" 20 78
+$UI --title "$APP $VERSION" --msgbox "Installs an unprivileged Debian LXC and ${APP}.\n\nYou enter the LXC IPv4 and the router/gateway.\nAfter install, open http://<that-ip>/  (port 80).\n\nSource: ${REPO_URL}" 16 78
 
 MODE="$(menu "What do you want to do?" \
   default "Default install (recommended)" \
@@ -309,27 +309,26 @@ if [[ "$MODE" == "repair" || "$MODE" == "update" || "$MODE" == "backup" || "$MOD
       ;;
     repair)
       FIX_IP="$(ask "LAN IPv4 for this CT" "192.168.13.13")"
-      FIX_PORT="$(ask "LAN port (browser URL will be http://${FIX_IP}:PORT)" "8082")"
+      FIX_GW="$(ask "Router / gateway" "192.168.1.1")"
       if pct exec "$CTID" -- test -f /opt/receiptvault/deploy/make-reachable.sh; then
-        pct exec "$CTID" -- bash /opt/receiptvault/deploy/make-reachable.sh "$FIX_IP" "$FIX_PORT"
+        pct exec "$CTID" -- env RV_GATEWAY="$FIX_GW" bash /opt/receiptvault/deploy/make-reachable.sh "$FIX_IP" 80
       else
-        pct exec "$CTID" -- env RV_IP="$FIX_IP" RV_PORT="$FIX_PORT" bash /opt/receiptvault/deploy/repair-in-place.sh
+        pct exec "$CTID" -- env RV_IP="$FIX_IP" RV_PORT=80 RV_GATEWAY="$FIX_GW" bash /opt/receiptvault/deploy/repair-in-place.sh
       fi
-      msg "Open this URL:\n\n  http://${FIX_IP}:${FIX_PORT}/\n\nCaddy is stopped so its welcome page cannot appear."
+      msg "Open this URL:\n\n  http://${FIX_IP}/"
       exit 0
       ;;
     network)
       BRIDGE="$(ask "Bridge" "vmbr0")"
       ask_static_network "$BRIDGE"
-      APPPORT="$(ask "LAN port. Open http://${STATIC_IP}:PORT/ — default 8082." "8082")"
-      yesno "Put ReceiptVault on ${STATIC_CIDR} port ${APPPORT} and stop Caddy?" || exit 0
+      yesno "Put ReceiptVault on ${STATIC_CIDR} and open as http://${STATIC_IP}/ ?" || exit 0
       apply_ct_static_ip "$BRIDGE" || true
       if pct exec "$CTID" -- test -f /opt/receiptvault/deploy/make-reachable.sh; then
-        pct exec "$CTID" -- bash /opt/receiptvault/deploy/make-reachable.sh "$STATIC_IP" "$APPPORT"
+        pct exec "$CTID" -- env RV_GATEWAY="$GW" bash /opt/receiptvault/deploy/make-reachable.sh "$STATIC_IP" 80
       fi
-      PUBLIC="$(public_url_for "$STATIC_IP" "$APPPORT")"
+      PUBLIC="$(public_url_for "$STATIC_IP" 80)"
       msg "Open this URL:\n\n  ${PUBLIC}"
-      log "Network updated CT $CTID ip=$STATIC_IP port=$APPPORT"
+      log "Network updated CT $CTID ip=$STATIC_IP"
       echo -e "${GN}Open ${BL}${PUBLIC}${CL}"
       exit 0
       ;;
@@ -371,19 +370,27 @@ STATIC_CIDR=""
 STATIC_IP=""
 GW=""
 DNS="1.1.1.1"
+APPPORT=80
 if [[ "$MODE" == "advanced" ]]; then
   CORES="$(ask "vCPU" "4")"
   MEMORY="$(ask "RAM (MB)" "8192")"
   BRIDGE="$(ask "Bridge" "vmbr0")"
-  NETMODE="$(menu "IPv4" dhcp "DHCP" static "Static IPv4")"
+  NETMODE="$(menu "IPv4" static "Static IPv4 (recommended)" dhcp "DHCP")"
   if [[ "$NETMODE" == "static" ]]; then
     ask_static_network "$BRIDGE"
   fi
+  APPPORT="$(ask "Browser port. 80 means open http://<ip>/ with no port." "80")"
   if yesno "Unprivileged container? (recommended: Yes)"; then UNPRIV=1; else UNPRIV=0; fi
   REPO_URL="$(ask "Git clone URL for ReceiptVault" "$REPO_URL")"
   REPO_REF="$(ask "Git ref (branch or tag)" "$REPO_REF")"
 else
-  CORES=4; MEMORY=8192; BRIDGE=vmbr0; NETMODE=dhcp; UNPRIV=1
+  CORES=4
+  MEMORY=8192
+  BRIDGE=vmbr0
+  NETMODE=static
+  UNPRIV=1
+  ask_static_network "$BRIDGE"
+  APPPORT=80
 fi
 
 EVIDENCE="$(menu "Evidence storage" \
@@ -394,8 +401,6 @@ EVPATH="/var/lib/receiptvault/evidence"
 if [[ "$EVIDENCE" != "root" ]]; then
   EVPATH="$(ask "Host evidence path" "$EVPATH")"
 fi
-APPPORT="$(ask "LAN port. After install open http://${STATIC_IP:-<container-ip>}:PORT/  (Caddy is not used)." "8082")"
-
 CF="$(menu "Cloudflare Tunnel" \
   skip "LAN only (no public hostname)" \
   existing "I already have a tunnel — show origin settings" \
@@ -494,12 +499,17 @@ rm -f "$STATUS"
     ACCESS_IP="$(pct exec "$CTID" -- hostname -I | awk '{print $1}')"
   fi
   PUBLIC="$(public_url_for "$ACCESS_IP" "$APPPORT")"
+  if [[ "$APPPORT" == "80" ]]; then
+    INTERNAL_PORT=8082
+  else
+    INTERNAL_PORT="$APPPORT"
+  fi
   pct exec "$CTID" -- tee /etc/receiptvault/receiptvault.env >/dev/null <<ENVEOF
 RECEIPTVAULT_ENV=production
 RECEIPTVAULT_PUBLIC_URL=${PUBLIC}
-RECEIPTVAULT_LAN_PORT=${APPPORT}
+RECEIPTVAULT_LAN_PORT=${INTERNAL_PORT}
 RECEIPTVAULT_API_HOST=0.0.0.0
-RECEIPTVAULT_API_PORT=${APPPORT}
+RECEIPTVAULT_API_PORT=${INTERNAL_PORT}
 RECEIPTVAULT_TIMEZONE=Australia/Melbourne
 RECEIPTVAULT_MASTER_KEY=${MASTER}
 RECEIPTVAULT_DATABASE_URL=postgresql+psycopg://receiptvault:${DBPASS}@127.0.0.1:5432/receiptvault
@@ -569,7 +579,7 @@ systemctl enable --now cloudflared"
   fi
 fi
 
-FINAL="ReceiptVault CT ${CTID} is ready.\n\nOpen this exact URL:\n  ${PUBLIC}\n\nCreate the owner account there. Then add Entra app credentials, connect three inboxes, pick audit years, and start the first scan.\n\nExisting Cloudflare Tunnel origin:\n  ${ORIGIN}\n\nInstall log (secrets redacted): ${LOG}\n\nIf the IP is wrong, re-run this helper and choose Fix / change LAN IP."
+FINAL="ReceiptVault CT ${CTID} is ready.\n\nOpen:\n  ${PUBLIC}\n\nCreate the owner account there. Then add Entra app credentials, connect three inboxes, pick audit years, and start the first scan.\n\nExisting Cloudflare Tunnel origin:\n  ${ORIGIN}\n\nInstall log (secrets redacted): ${LOG}\n\nTo change the IP later, re-run this helper and choose Fix / change LAN IP."
 msg "$FINAL"
 log "Completed CT $CTID ip=$ACCESS_IP port=$APPPORT url=$PUBLIC"
 echo -e "${GN}Done.${CL} Open ${BL}${PUBLIC}${CL}"

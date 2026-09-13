@@ -42,22 +42,27 @@ bash /root/install-receiptvault.sh
 
 ## 3. What the helper asks
 
+Default install (same shape as other helper scripts):
+
 1. Default / Advanced / Fix LAN IP / Repair / Update / Backup / Restore / Uninstall  
 2. CTID, hostname, storage, disk  
-3. Advanced only: CPU, RAM, bridge, DHCP or static IP, unprivileged toggle, git URL  
-4. Evidence storage: LXC disk, new host bind mount, or existing NFS/host path  
-5. LAN port (default **80** for static IP so `http://<ip>/` works, otherwise **8080**)  
-6. Cloudflare: skip, existing tunnel, or paste a tunnel token into a password box (not logged)
+3. **LXC IPv4** (default `192.168.13.13`)  
+4. **Router / gateway** (default `192.168.1.1`)  
+5. DNS (default `1.1.1.1`)  
+6. Evidence storage  
+7. Cloudflare: skip, existing tunnel, or paste a token into a password box (not logged)
 
-A static address must be on the same subnet as the Proxmox bridge. If the host is `192.168.14.1`, use `192.168.14.13/24`, not `192.168.13.13`. A bare IPv4 is stored as `/24`. To change an existing CT, re-run the helper and choose **Fix / change LAN IP**.
+Advanced adds CPU, RAM, bridge, DHCP, a custom browser port, and the git URL.
 
-It then creates the LXC, installs PostgreSQL, Redis, Caddy, OCR, builds the app, enables systemd, and prints:
+It then creates the LXC, installs PostgreSQL, Redis, OCR, builds the app, and prints:
 
 ```text
-http://<lxc-ip>:8080
+http://<the-ip-you-typed>/
 ```
 
-Create the owner account there. No source edits.
+Port 80 — no `:8082`. Create the owner account there.
+
+To change an existing CT, re-run the helper and choose **Fix / change LAN IP**.
 
 ## 4. Install from a USB/SCP copy (no GitHub yet)
 
@@ -80,10 +85,10 @@ wget -O /root/fix-receiptvault.sh \
 bash /root/fix-receiptvault.sh
 ```
 
-Then open **http://192.168.13.13:8082/**. The LXC uses router **192.168.1.1** for internet (mailbox scan).
+Then open **http://192.168.13.13/** (or the IP you entered). The LXC uses the gateway you entered for internet (mailbox scan).
 
 ## 6. After install
 
-- Existing Cloudflare Tunnel origin: `http://<lxc-ip>:8080`
+- Existing Cloudflare Tunnel origin: `http://<lxc-ip>/`
 - Re-run the same helper and choose **Update**, **Repair**, **Backup**, or **Uninstall**
 - Owner password reset from the host: `pct exec <CTID> -- receiptvault reset-password OWNER 'new-long-password'`

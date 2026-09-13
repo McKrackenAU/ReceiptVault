@@ -65,9 +65,19 @@ or the helper-script one-liner (inspect the URL first; never put secrets on this
 bash -c "$(wget -qLO - https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/install-receiptvault.sh)"
 ```
 
-The helper creates an unprivileged Debian 13 LXC (4 vCPU / 8 GB / 32 GB by default), installs PostgreSQL, Redis, Caddy, OCR, and ReceiptVault, then prints `http://<lxc-ip>:8080`. Create the owner there. No source edits.
+The helper asks for the LXC IPv4 and the router/gateway (same as other Proxmox helper scripts), creates an unprivileged Debian 13 LXC, installs PostgreSQL, Redis, OCR, and ReceiptVault, then prints `http://<the-ip-you-typed>/`. Create the owner there.
 
 Do not put mailbox passwords or tunnel tokens on the wget line. Cloudflare tokens are entered in a password box if you choose that option.
+
+If an existing CT is not reachable, run this **on the Proxmox host**:
+
+```bash
+wget -O /root/fix-receiptvault.sh \
+  https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh
+bash /root/fix-receiptvault.sh
+```
+
+Then open **http://192.168.13.13/** (or the IP you installed with). No port number.
 
 ## Operator commands
 

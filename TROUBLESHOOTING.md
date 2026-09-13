@@ -2,9 +2,11 @@
 
 ## Open the app
 
-On a normal LAN the LXC is **192.168.13.13**, the router is **192.168.1.1**, and you open:
+The installer asks for the LXC IPv4 and the router/gateway. After that you open:
 
-**http://192.168.13.13:8082/**
+**http://&lt;the-ip-you-typed&gt;/**
+
+Typical values: LXC `192.168.13.13`, router `192.168.1.1` → **http://192.168.13.13/**
 
 If that is not working, run this **on the Proxmox host**:
 
@@ -14,14 +16,14 @@ wget -O /root/fix-receiptvault.sh \
 bash /root/fix-receiptvault.sh
 ```
 
-That sets `192.168.13.13/16` with gateway `192.168.1.1`, stops Caddy, and starts ReceiptVault on port 8082.
+That puts ReceiptVault on port 80 at the LXC IP and stops Caddy (Caddy’s default page is not the app).
 
 ## App will not start
 
 - `password authentication failed for user "receiptvault"` means the URL in `/etc/receiptvault/receiptvault.env` does not match Postgres. Re-run `fix-from-host.sh`, or inside the CT: `bash /opt/receiptvault/deploy/ensure-db.sh && systemctl restart receiptvault`.
 - `pg_isready` and `redis-cli ping` should succeed.
 - `RECEIPTVAULT_DATABASE_URL` must use the `postgresql+psycopg://` scheme.
-- `journalctl -u receiptvault -u receiptvault-worker` on production.
+- `journalctl -u receiptvault -u receiptvault-http80 -u receiptvault-worker` on production.
 
 ## First-run setup already claimed
 
@@ -33,7 +35,7 @@ Setup is one-time. Reset the owner with `receiptvault reset-password` rather tha
 - Personal Hotmail/Outlook need the `common` authority.
 - Tenant policy may block unverified apps; an admin may need to allow `Mail.Read`.
 - For local tests set `RECEIPTVAULT_GRAPH_MOCK=true` and use the three mock identities.
-- The LXC must reach the internet via **192.168.1.1**.
+- The LXC must reach the internet via the gateway you entered (typically **192.168.1.1**).
 
 ## Scan stuck or duplicated
 
@@ -43,7 +45,7 @@ Setup is one-time. Reset the owner with `receiptvault reset-password` rather tha
 
 ## Upload 413 through Cloudflare
 
-Chunk size must stay at or below 50 MiB (default 16). Free/Pro request bodies are 100 MB. Do not raise Caddy/`client_max_body_size` as a substitute for chunking.
+Chunk size must stay at or below 50 MiB (default 16). Free/Pro request bodies are 100 MB.
 
 ## OCR empty
 

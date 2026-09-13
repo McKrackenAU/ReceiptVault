@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app import __version__
@@ -78,4 +78,13 @@ def spa(full_path: str = ""):
     index = FRONTEND / "index.html"
     if index.exists() and not full_path.startswith("assets/"):
         return FileResponse(index)
-    return JSONResponse({"service": "ReceiptVault", "docs": "/api/docs"})
+    html = (
+        "<!doctype html><html><head><meta charset='utf-8'><title>ReceiptVault</title></head>"
+        "<body style='font-family:system-ui;padding:2rem'>"
+        "<h1>ReceiptVault</h1>"
+        "<p>The API is running. The web UI build is missing on this server "
+        "(<code>frontend/dist</code>). Open <a href='/api/docs'>/api/docs</a> "
+        "or rebuild the UI with <code>npm run build</code> in /opt/receiptvault/frontend.</p>"
+        "</body></html>"
+    )
+    return HTMLResponse(html)

@@ -1,0 +1,13 @@
+[Unit]
+Description=ReceiptVault HTTP port 80 (forwards to the LAN app port)
+After=receiptvault.service
+Wants=receiptvault.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/receiptvault/receiptvault.env
+ExecStart=/opt/receiptvault/deploy/lan-http80.sh
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
