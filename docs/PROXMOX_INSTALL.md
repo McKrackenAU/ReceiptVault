@@ -17,7 +17,9 @@ git clone --depth 1 https://github.com/McKrackenAU/ReceiptVault.git /root/Receip
 bash /root/ReceiptVault/deploy/install-receiptvault.sh
 ```
 
-Choose **Default install**. Accept the suggested LXC IPv4 (`192.168.13.14`) and the suggested gateway (this host's address on vmbr0). The LAN prefix is taken from the host bridge (`/20` on this network).
+Choose **Default install**. Accept `192.168.13.14` and the suggested gateway. Prefix is **/20**.
+
+If the page will not load, run `bash deploy/reach.sh` on the host. That reapplies `192.168.13.14/20` and starts the app.
 
 ## Open the app
 

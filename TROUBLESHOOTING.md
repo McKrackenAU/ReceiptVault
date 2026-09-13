@@ -17,7 +17,15 @@ git clone --depth 1 https://github.com/McKrackenAU/ReceiptVault.git /root/Receip
 bash /root/ReceiptVault/deploy/install-receiptvault.sh
 ```
 
-Choose **Default install** for a new CT, or **Update** for an existing one. Accept `192.168.13.14` and the suggested gateway. When it finishes, open **http://192.168.13.14/**. Hard-refresh (Ctrl+Shift+R). Settings must show **1.5.1**.
+If the site cannot be reached, on the Proxmox host:
+
+```bash
+cd /root/ReceiptVault
+git pull
+bash deploy/reach.sh
+```
+
+That forces the CT onto **192.168.13.14/20** and starts the app. Then open **http://192.168.13.14/** (http, not https). Settings must show **1.5.1**.
 
 ## App will not start
 

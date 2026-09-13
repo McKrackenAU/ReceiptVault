@@ -61,6 +61,10 @@ def test_normalize_uses_slash20_when_host_is_on_another_octet():
     assert _fn('normalize_ipv4_cidr 192.168.13.14 192.168.14.1') == "192.168.13.14/20"
 
 
+def test_normalize_keeps_slash20_when_gateway_shares_octet():
+    assert _fn('normalize_ipv4_cidr 192.168.13.14 192.168.13.1') == "192.168.13.14/20"
+
+
 def test_normalize_ipv4_keeps_prefix():
     assert _fn('normalize_ipv4_cidr 192.168.13.14/20') == "192.168.13.14/20"
 
@@ -98,9 +102,11 @@ def test_fix_and_update_download_github_on_the_host():
     assert "github.com/McKrackenAU/ReceiptVault/archive/refs/heads/main.tar.gz" in update
     assert "git fetch --tags origin" not in installer
     assert "publish-on-host.sh" in installer
+    assert "reach.sh" in installer
     _bash_n(DEPLOY / "guest-update.sh")
     _bash_n(DEPLOY / "install-host-command.sh")
     _bash_n(DEPLOY / "publish-on-host.sh")
+    _bash_n(DEPLOY / "reach.sh")
 
 
 def test_cidr_contains_slash20_covers_both_octets():

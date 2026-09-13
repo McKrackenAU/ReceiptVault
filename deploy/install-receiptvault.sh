@@ -605,13 +605,11 @@ systemctl enable --now cloudflared"
   fi
 fi
 
-OPEN_URL="$(public_url_for "${ACCESS_IP}" "${APPPORT}")"
-HOST_IP="$(host_ipv4_on_bridge vmbr0 2>/dev/null || true)"
-FINAL="ReceiptVault CT ${CTID} is ready.\n\nOpen this on the desktop:\n  ${OPEN_URL}\n"
-if [[ -n "${HOST_IP:-}" ]]; then
-  FINAL="${FINAL}\nHost proxy (if the LXC address is blocked):\n  http://${HOST_IP}:8484/\n"
+if [[ -f "${SCRIPT_DIR}/reach.sh" ]]; then
+  bash "${SCRIPT_DIR}/reach.sh" "$CTID" || true
 fi
-FINAL="${FINAL}\nCreate the owner, save the Entra app in Settings, connect Hotmail, start the historical scan.\n\nLog: ${LOG}"
+OPEN_URL="http://${PREFERRED_LXC_IP:-192.168.13.14}/"
+FINAL="ReceiptVault CT ${CTID} is ready.\n\nOpen this:\n  ${OPEN_URL}\n\nhttp, not https. Prefix /20.\n\nCreate the owner, save the Entra app in Settings, connect Hotmail, start the historical scan.\n\nLog: ${LOG}"
 msg "$FINAL"
 log "Completed CT $CTID ip=$ACCESS_IP url=$OPEN_URL"
 echo -e "${GN}Done.${CL} Open ${BL}${OPEN_URL}${CL}"

@@ -58,9 +58,17 @@ bash deploy/install-receiptvault.sh
 
 First time: `git clone --depth 1 https://github.com/McKrackenAU/ReceiptVault.git /root/ReceiptVault` then the same `bash deploy/install-receiptvault.sh`.
 
-Choose **Default install** for a new CT. Accept the suggested LXC IPv4 (`192.168.13.14`) and the suggested gateway (this host's address on the bridge). The prefix comes from the host LAN (`/20` here).
+Choose **Default install** for a new CT. Accept `192.168.13.14` and the suggested gateway. The prefix is **/20**.
 
-When it finishes, open **http://192.168.13.14/** on the desktop. Create the owner, save the Microsoft app in Settings, connect Hotmail, start the historical scan.
+If the CT already exists and the browser cannot reach it:
+
+```bash
+cd /root/ReceiptVault
+git pull
+bash deploy/reach.sh
+```
+
+Then open **http://192.168.13.14/** (http, not https). Create the owner, save the Microsoft app in Settings, connect Hotmail, start the historical scan.
 
 ## Operator commands
 

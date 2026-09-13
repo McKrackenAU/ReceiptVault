@@ -21,7 +21,9 @@ import ipaddress, sys
 ip = ipaddress.ip_address(sys.argv[1])
 gw = ipaddress.ip_address(sys.argv[2])
 fallback = int(sys.argv[3])
-for prefix in (24, 20, 16, 8):
+# This LAN is /20. Do not collapse to /24 just because the gateway
+# shares the third octet.
+for prefix in (20, 16, 8):
     net = ipaddress.ip_network(f"{ip}/{prefix}", strict=False)
     if gw in net:
         print(f"{ip}/{prefix}")
@@ -94,9 +96,7 @@ PY
 }
 
 # Prints: LXC_IP GATEWAY CIDR
-# Prefers 192.168.13.14 on the host LAN. Uses the host prefix (/20 here).
-# If the host iface is listed as /24 but 192.168.13.14 still shares a /20
-# with the host, use 192.168.13.14/20 anyway.
+# Always 192.168.13.14/20 when the host sits in that /20.
 choose_lxc_on_host_cidr() {
   local host_cidr="$1"
   local prefer="${2:-$PREFERRED_LXC_IP}"
@@ -108,9 +108,6 @@ prefer = ipaddress.ip_address(sys.argv[2])
 fallback_prefix = int(sys.argv[3])
 net = iface.network
 host = iface.ip
-if prefer in net and prefer != host and prefer != net.broadcast_address:
-    print(f"{prefer} {host} {prefer}/{net.prefixlen}")
-    raise SystemExit(0)
 wide = ipaddress.ip_network(f"{prefer}/{fallback_prefix}", strict=False)
 if host in wide and prefer != host:
     print(f"{prefer} {host} {prefer}/{fallback_prefix}")
