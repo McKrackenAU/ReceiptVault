@@ -1,17 +1,5 @@
-:80, :8080 {
-	encode gzip
-	request_body {
-		max_size 60MB
-	}
-	handle /api/* {
-		reverse_proxy 127.0.0.1:8473
-	}
-	handle /health* {
-		reverse_proxy 127.0.0.1:8473
-	}
-	handle {
-		root * /opt/receiptvault/frontend/dist
-		try_files {path} /index.html
-		file_server
-	}
+# Unused for LAN access. ReceiptVault binds its own port (default 8082).
+# Kept only if you later put Cloudflare in front of the LXC.
+:8080 {
+	reverse_proxy 127.0.0.1:8082
 }

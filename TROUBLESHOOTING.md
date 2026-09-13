@@ -27,16 +27,15 @@ Then open `http://192.168.14.13/` (port 80) or `http://192.168.14.13:8080`.
 
 ## Caddy page instead of ReceiptVault
 
-Debian’s Caddy package serves its own welcome page on port 80 until ReceiptVault’s Caddyfile and API are in place. The API unit used to point at `/opt/receiptvault/.venv`, while `uv` installs into `/opt/receiptvault/backend/.venv`, so the app never started and you only saw Caddy.
+Caddy is no longer used on the LAN. Its Debian welcome page was what you saw on port 80. ReceiptVault now listens itself on a port such as **8082**.
 
-On the Proxmox host:
+On the Proxmox host (replace `200` with your CTID from `pct list`):
 
 ```bash
-pct list
-pct exec <CTID> -- bash -lc 'cd /opt/receiptvault && git pull --ff-only origin main && bash deploy/repair-in-place.sh'
+pct exec 200 -- bash -lc 'curl -fsSL https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/make-reachable.sh -o /tmp/make-reachable.sh && bash /tmp/make-reachable.sh 192.168.13.13 8082'
 ```
 
-Then open `http://<container-ip>/` (and `http://<container-ip>:8080/` as a fallback). You should get the owner setup or login screen, not the Caddy default site.
+Then open **http://192.168.13.13:8082/** — owner setup or login, not Caddy.
 
 ## App will not start
 

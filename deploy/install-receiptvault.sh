@@ -185,31 +185,8 @@ ip -4 addr show dev "$IFACE" | grep -q "inet ${ADDR}/"
 EOS
 }
 
-write_guest_caddy() {
-  local port="$1"
-  local listens=":80, :8080"
-  if [[ "$port" != "80" && "$port" != "8080" ]]; then
-    listens=":80, :8080, :${port}"
-  fi
-  pct exec "$CTID" -- tee /etc/caddy/Caddyfile >/dev/null <<EOF
-${listens} {
-	encode gzip
-	request_body {
-		max_size 60MB
-	}
-	handle /api/* {
-		reverse_proxy 127.0.0.1:8473
-	}
-	handle /health* {
-		reverse_proxy 127.0.0.1:8473
-	}
-	handle {
-		root * /opt/receiptvault/frontend/dist
-		try_files {path} /index.html
-		file_server
-	}
-}
-EOF
+disable_guest_caddy() {
+  pct exec "$CTID" -- bash -lc 'systemctl disable --now caddy >/dev/null 2>&1 || true; systemctl mask caddy >/dev/null 2>&1 || true'
 }
 
 prepare_guest_locale() {
@@ -328,29 +305,27 @@ if [[ "$MODE" == "repair" || "$MODE" == "update" || "$MODE" == "backup" || "$MOD
       exit 0
       ;;
     repair)
-      if pct exec "$CTID" -- test -f /opt/receiptvault/deploy/repair-in-place.sh; then
-        pct exec "$CTID" -- bash /opt/receiptvault/deploy/repair-in-place.sh
+      FIX_IP="$(ask "LAN IPv4 for this CT" "192.168.13.13")"
+      FIX_PORT="$(ask "LAN port (browser URL will be http://${FIX_IP}:PORT)" "8082")"
+      if pct exec "$CTID" -- test -f /opt/receiptvault/deploy/make-reachable.sh; then
+        pct exec "$CTID" -- bash /opt/receiptvault/deploy/make-reachable.sh "$FIX_IP" "$FIX_PORT"
       else
-        pct exec "$CTID" -- bash -lc 'systemctl restart postgresql redis-server caddy receiptvault receiptvault-worker'
-        pct exec "$CTID" -- env LANG=C.UTF-8 LC_ALL=C.UTF-8 curl -fsS http://127.0.0.1:8473/health/live >/dev/null
+        pct exec "$CTID" -- env RV_IP="$FIX_IP" RV_PORT="$FIX_PORT" bash /opt/receiptvault/deploy/repair-in-place.sh
       fi
-      IPADDR="$(pct exec "$CTID" -- hostname -I | awk '{print $1}')"
-      msg "Repair completed for CT $CTID.\n\nOpen http://${IPADDR}/\nor http://${IPADDR}:8080/"
+      msg "Open this URL:\n\n  http://${FIX_IP}:${FIX_PORT}/\n\nCaddy is stopped so its welcome page cannot appear."
       exit 0
       ;;
     network)
       BRIDGE="$(ask "Bridge" "vmbr0")"
       ask_static_network "$BRIDGE"
-      APPPORT="$(ask "LAN port. 80 means http://${STATIC_IP}/ works with no port in the URL." "80")"
-      yesno "Apply ${STATIC_CIDR} gw=${GW} on CT ${CTID} (${BRIDGE}) and publish Caddy on port ${APPPORT} (and 80)?" || exit 0
-      apply_ct_static_ip "$BRIDGE"
-      PUBLIC="$(public_url_for "$STATIC_IP" "$APPPORT")"
-      update_public_url "$PUBLIC"
-      if pct exec "$CTID" -- test -d /etc/caddy; then
-        write_guest_caddy "$APPPORT"
-        pct exec "$CTID" -- systemctl restart caddy receiptvault || true
+      APPPORT="$(ask "LAN port. Open http://${STATIC_IP}:PORT/ — default 8082." "8082")"
+      yesno "Put ReceiptVault on ${STATIC_CIDR} port ${APPPORT} and stop Caddy?" || exit 0
+      apply_ct_static_ip "$BRIDGE" || true
+      if pct exec "$CTID" -- test -f /opt/receiptvault/deploy/make-reachable.sh; then
+        pct exec "$CTID" -- bash /opt/receiptvault/deploy/make-reachable.sh "$STATIC_IP" "$APPPORT"
       fi
-      msg "CT ${CTID} should now answer at:\n\n  ${PUBLIC}\n  http://${STATIC_IP}/\n\nIf the page does not load, confirm another LAN host is on the same subnet as ${STATIC_CIDR}."
+      PUBLIC="$(public_url_for "$STATIC_IP" "$APPPORT")"
+      msg "Open this URL:\n\n  ${PUBLIC}"
       log "Network updated CT $CTID ip=$STATIC_IP port=$APPPORT"
       echo -e "${GN}Open ${BL}${PUBLIC}${CL}"
       exit 0
@@ -416,11 +391,7 @@ EVPATH="/var/lib/receiptvault/evidence"
 if [[ "$EVIDENCE" != "root" ]]; then
   EVPATH="$(ask "Host evidence path" "$EVPATH")"
 fi
-DEFAULT_PORT="8080"
-if [[ "$NETMODE" == "static" ]]; then
-  DEFAULT_PORT="80"
-fi
-APPPORT="$(ask "LAN port published via Caddy. Use 80 so http://${STATIC_IP:-<container-ip>}/ works without :port." "$DEFAULT_PORT")"
+APPPORT="$(ask "LAN port. After install open http://${STATIC_IP:-<container-ip>}:PORT/  (Caddy is not used)." "8082")"
 
 CF="$(menu "Cloudflare Tunnel" \
   skip "LAN only (no public hostname)" \
@@ -524,8 +495,8 @@ rm -f "$STATUS"
 RECEIPTVAULT_ENV=production
 RECEIPTVAULT_PUBLIC_URL=${PUBLIC}
 RECEIPTVAULT_LAN_PORT=${APPPORT}
-RECEIPTVAULT_API_HOST=127.0.0.1
-RECEIPTVAULT_API_PORT=8473
+RECEIPTVAULT_API_HOST=0.0.0.0
+RECEIPTVAULT_API_PORT=${APPPORT}
 RECEIPTVAULT_TIMEZONE=Australia/Melbourne
 RECEIPTVAULT_MASTER_KEY=${MASTER}
 RECEIPTVAULT_DATABASE_URL=postgresql+psycopg://receiptvault:${DBPASS}@127.0.0.1:5432/receiptvault
@@ -553,8 +524,8 @@ ENVEOF
   fi
   PUBLIC="$(public_url_for "$ACCESS_IP" "$APPPORT")"
   update_public_url "$PUBLIC"
-  write_guest_caddy "$APPPORT" || true
-  pct exec "$CTID" -- systemctl restart caddy receiptvault >>"$LOG" 2>&1 || true
+  disable_guest_caddy || true
+  pct exec "$CTID" -- systemctl restart receiptvault >>"$LOG" 2>&1 || true
   pct exec "$CTID" -- bash -lc "echo ${MARKER_KEY}=${VERSION} > /opt/receiptvault/.installed"
   echo 100
   echo OK >"$STATUS"

@@ -99,44 +99,23 @@ if [[ -n "${RECEIPTVAULT_STATIC_CIDR:-}" && -f "$APP_ROOT/deploy/guest-network.s
     RV_DNS="${RECEIPTVAULT_DNS:-1.1.1.1}" bash "$APP_ROOT/deploy/guest-network.sh"
 fi
 
-log "Installing systemd units and Caddy"
+log "Installing systemd units (Caddy is not used on the LAN — it only showed a welcome page)"
+install -m 0755 "$APP_ROOT/deploy/run-api.sh" "$APP_ROOT/deploy/run-api.sh"
 install -m 0644 "$APP_ROOT/deploy/systemd/receiptvault.service" /etc/systemd/system/receiptvault.service
 install -m 0644 "$APP_ROOT/deploy/systemd/receiptvault-worker.service" /etc/systemd/system/receiptvault-worker.service
-LAN_PORT="${RECEIPTVAULT_LAN_PORT:-8080}"
-if [[ "$LAN_PORT" == "80" ]]; then
-  LISTENS=":80, :8080"
-else
-  LISTENS=":80, :${LAN_PORT}"
-fi
+LAN_PORT="${RECEIPTVAULT_LAN_PORT:-8082}"
 chmod -R a+rX "$APP_ROOT/frontend/dist" || true
-cat >/etc/caddy/Caddyfile <<EOF
-${LISTENS} {
-	encode gzip
-	request_body {
-		max_size 60MB
-	}
-	handle /api/* {
-		reverse_proxy 127.0.0.1:8473
-	}
-	handle /health* {
-		reverse_proxy 127.0.0.1:8473
-	}
-	handle {
-		root * ${APP_ROOT}/frontend/dist
-		try_files {path} /index.html
-		file_server
-	}
-}
-EOF
 ln -sfn "$APP_ROOT/backend/.venv" "$APP_ROOT/.venv"
 ln -sfn "$APP_ROOT/backend/.venv/bin/receiptvault" /usr/local/bin/receiptvault
+systemctl disable --now caddy >/dev/null 2>&1 || true
+systemctl mask caddy >/dev/null 2>&1 || true
 systemctl daemon-reload
-systemctl enable --now caddy receiptvault receiptvault-worker
+systemctl enable --now receiptvault receiptvault-worker
 
-log "Waiting for health check"
+log "Waiting for health check on port ${LAN_PORT}"
 ok=0
 for _ in $(seq 1 30); do
-  if curl -fsS http://127.0.0.1:8473/health/live >/dev/null; then
+  if curl -fsS "http://127.0.0.1:${LAN_PORT}/health/live" >/dev/null; then
     ok=1
     break
   fi
