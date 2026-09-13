@@ -37,6 +37,8 @@ export function SettingsPage() {
   const [health, setHealth] = useState<Health | null>(null)
   const [year, setYear] = useState('2024-25')
   const [notes, setNotes] = useState('')
+  const [clientId, setClientId] = useState('')
+  const [clientSecret, setClientSecret] = useState('')
   const [msg, setMsg] = useState('')
 
   useEffect(() => {
@@ -58,8 +60,8 @@ export function SettingsPage() {
           <ol className="list-decimal space-y-2 pl-5 text-sm">
             <li>Owner account created.</li>
             <li>Confirm timezone (default Australia/Melbourne) and evidence path below.</li>
-            <li>Register a Microsoft Entra app or keep GRAPH_MOCK for local tests. Callback: {settings.oauth_redirect}</li>
-            <li>Connect three inboxes on Inbox accounts.</li>
+            <li>Register a Microsoft Entra app (any org + personal accounts). Paste the client ID and secret below. Callback: {settings.oauth_redirect}</li>
+            <li>Connect Hotmail / Outlook on Inbox accounts — you sign in at Microsoft, not on this page.</li>
             <li>Select audit years and start the first historical scan.</li>
           </ol>
         </Card>
@@ -77,6 +79,44 @@ export function SettingsPage() {
           <Button className="mt-2" variant="outline" onClick={() => api('/api/v1/profile', { method: 'PUT', body: JSON.stringify({ adviser_notes: notes, common_equipment: [], audit_years: [year], periods: [] }) })}>
             Save taxpayer profile
           </Button>
+        </Card>
+        <Card>
+          <h2 className="font-serif text-xl">Microsoft app (required for real Hotmail)</h2>
+          <p className="mb-3 text-sm text-slate">
+            Create the app at{' '}
+            <a className="underline" href="https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade">
+              entra.microsoft.com
+            </a>
+            . Supported accounts: any organisational directory <em>and</em> personal Microsoft accounts. Redirect URI (Web):
+          </p>
+          <p className="mb-3 break-all rounded-md bg-black/5 px-2 py-1 font-mono text-xs">{settings.oauth_redirect}</p>
+          <p className="mb-3 text-sm text-slate">
+            Delegated permissions only: openid, profile, email, offline_access, Mail.Read. Microsoft sign-in happens on
+            Microsoft&apos;s site. This box never asks for your Hotmail password.
+          </p>
+          <Label>Application (client) ID</Label>
+          <Input value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder={settings.ms_client_configured ? 'Already saved — paste to replace' : 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'} />
+          <Label className="mt-3">Client secret</Label>
+          <Input type="password" autoComplete="new-password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} placeholder={settings.ms_client_configured ? 'Leave blank to keep the current secret' : 'Paste the secret value'} />
+          <Button
+            className="mt-3"
+            onClick={() =>
+              api('/api/v1/settings', {
+                method: 'PUT',
+                body: JSON.stringify({
+                  ms_client_id: clientId || undefined,
+                  ms_client_secret: clientSecret || undefined,
+                }),
+              }).then(() => {
+                setClientSecret('')
+                setMsg('Microsoft app saved. Open Inbox accounts and choose Sign in with Microsoft.')
+                return api<Settings>('/api/v1/settings').then(setSettings)
+              })
+            }
+          >
+            Save Microsoft app
+          </Button>
+          <p className="mt-2 text-sm">Configured: {settings.ms_client_configured ? 'yes' : 'no'}</p>
         </Card>
         <Card>
           <h2 className="font-serif text-xl">Storage and security</h2>

@@ -2,7 +2,8 @@ export class ApiError extends Error {
   status: number
   body: unknown
   constructor(status: number, body: unknown) {
-    super((body as { detail?: string })?.detail || 'Request failed')
+    const problem = body as { detail?: string; title?: string }
+    super(problem?.detail || problem?.title || 'Request failed')
     this.status = status
     this.body = body
   }

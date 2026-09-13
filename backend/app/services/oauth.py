@@ -25,20 +25,22 @@ def authorize_url(
     state: str,
     challenge: str,
     scopes: list[str],
+    login_hint: str | None = None,
 ) -> str:
-    query = urlencode(
-        {
-            "client_id": client_id,
-            "response_type": "code",
-            "redirect_uri": redirect_uri,
-            "response_mode": "query",
-            "scope": " ".join(scopes),
-            "state": state,
-            "code_challenge": challenge,
-            "code_challenge_method": "S256",
-            "prompt": "select_account",
-        }
-    )
+    params = {
+        "client_id": client_id,
+        "response_type": "code",
+        "redirect_uri": redirect_uri,
+        "response_mode": "query",
+        "scope": " ".join(scopes),
+        "state": state,
+        "code_challenge": challenge,
+        "code_challenge_method": "S256",
+        "prompt": "select_account",
+    }
+    if login_hint:
+        params["login_hint"] = login_hint
+    query = urlencode(params)
     return f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize?{query}"
 
 

@@ -88,3 +88,17 @@ def test_arithmetic_flags():
     )
     assert "line_totals_mismatch_subtotal" in flags
     assert "subtotal_tax_mismatch_total" in flags
+
+
+def test_upsert_env_key(tmp_path, monkeypatch):
+    env = tmp_path / "receiptvault.env"
+    env.write_text("RECEIPTVAULT_MS_CLIENT_ID=old\n")
+    monkeypatch.setenv("RECEIPTVAULT_ENV_FILE", str(env))
+    from app.config import upsert_env_key
+
+    upsert_env_key("RECEIPTVAULT_MS_CLIENT_ID", "new-id")
+    upsert_env_key("RECEIPTVAULT_MS_CLIENT_SECRET", "s3cret")
+    text = env.read_text()
+    assert "RECEIPTVAULT_MS_CLIENT_ID=new-id" in text
+    assert "RECEIPTVAULT_MS_CLIENT_SECRET=s3cret" in text
+    assert "old" not in text

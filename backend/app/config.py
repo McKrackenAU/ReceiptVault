@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -80,8 +81,47 @@ class Settings(BaseSettings):
             path.mkdir(parents=True, exist_ok=True)
 
 
+def env_file_path() -> Path:
+    explicit = os.environ.get("RECEIPTVAULT_ENV_FILE", "").strip()
+    if explicit:
+        return Path(explicit)
+    for candidate in (Path("/etc/receiptvault/receiptvault.env"), Path("/opt/receiptvault/.env")):
+        if candidate.exists():
+            return candidate
+    return Path(".env")
+
+
+def upsert_env_key(key: str, value: str) -> Path:
+    path = env_file_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    prefix = f"{key}="
+    written = False
+    out: list[str] = []
+    for line in lines:
+        if line.startswith(prefix):
+            out.append(f"{key}={value}")
+            written = True
+        else:
+            out.append(line)
+    if not written:
+        out.append(f"{key}={value}")
+    path.write_text("\n".join(out) + "\n", encoding="utf-8")
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+    os.environ[key] = value
+    return path
+
+
 @lru_cache
 def get_settings() -> Settings:
     settings = Settings()
     settings.ensure_dirs()
     return settings
+
+
+def reload_settings() -> Settings:
+    get_settings.cache_clear()
+    return get_settings()

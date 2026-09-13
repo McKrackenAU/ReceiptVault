@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import client_ip, current_user, require_csrf, settings_dep
-from app.config import Settings
+from app.config import Settings, reload_settings, upsert_env_key
 from app.db import get_db
 from app.models import AppSetting, User
 from app.services.audit import record_audit
@@ -21,6 +21,9 @@ class SettingsBody(BaseModel):
     timezone: str | None = None
     selected_financial_year: str | None = None
     incremental_scan_minutes: int | None = None
+    public_url: str | None = None
+    ms_client_id: str | None = None
+    ms_client_secret: str | None = None
 
 
 class BackupBody(BaseModel):
@@ -67,9 +70,28 @@ def put_settings(body: SettingsBody, request: Request, user: User = Depends(curr
         value["selected_financial_year"] = body.selected_financial_year
     row.value = value
     db.merge(row)
-    record_audit(db, event_type="settings_change", success=True, user_id=user.id, ip=client_ip(request, settings))
+    if body.public_url:
+        upsert_env_key("RECEIPTVAULT_PUBLIC_URL", body.public_url.rstrip("/"))
+    if body.ms_client_id is not None:
+        upsert_env_key("RECEIPTVAULT_MS_CLIENT_ID", body.ms_client_id.strip())
+    if body.ms_client_secret:
+        upsert_env_key("RECEIPTVAULT_MS_CLIENT_SECRET", body.ms_client_secret.strip())
+    if body.public_url or body.ms_client_id is not None or body.ms_client_secret:
+        settings = reload_settings()
+    record_audit(
+        db,
+        event_type="settings_change",
+        success=True,
+        user_id=user.id,
+        ip=client_ip(request, settings),
+        metadata={"ms_client_updated": bool(body.ms_client_id or body.ms_client_secret)},
+    )
     db.commit()
-    return {"ok": True}
+    return {
+        "ok": True,
+        "oauth_redirect": settings.oauth_redirect_uri,
+        "ms_client_configured": bool(settings.ms_client_id) or settings.graph_mock,
+    }
 
 
 @router.post("/ops/backup")

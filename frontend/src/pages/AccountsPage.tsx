@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Disclaimer } from '@/components/Layout'
 import { Button } from '@/components/ui/button'
 import { Badge, Card } from '@/components/ui/card'
 import { Input, Label } from '@/components/ui/input'
-import { api } from '@/lib/api'
+import { ApiError, api } from '@/lib/api'
 
 type Account = {
   id: string
@@ -21,11 +22,21 @@ type Account = {
   failures: number
 }
 
+type AppSettings = {
+  graph_mock: boolean
+  oauth_redirect: string
+  ms_client_configured: boolean
+}
+
 export function AccountsPage() {
+  const [params] = useSearchParams()
   const [items, setItems] = useState<Account[]>([])
+  const [settings, setSettings] = useState<AppSettings | null>(null)
   const [label, setLabel] = useState('Hotmail personal')
+  const [hint, setHint] = useState('')
   const [identity, setIdentity] = useState('hotmail-one')
   const [message, setMessage] = useState('')
+  const [busy, setBusy] = useState(false)
 
   async function refresh() {
     const r = await api<{ items: Account[] }>('/api/v1/mail/accounts')
@@ -33,14 +44,30 @@ export function AccountsPage() {
   }
   useEffect(() => {
     refresh().catch((e) => setMessage(e.message))
-  }, [])
+    api<AppSettings>('/api/v1/settings')
+      .then(setSettings)
+      .catch((e) => setMessage(e.message))
+    if (params.get('connected') === '1') {
+      setMessage('Microsoft sign-in finished. If the account is not listed, the callback may have failed — try Connect again.')
+    }
+  }, [params])
 
   async function connect() {
-    const r = await api<{ authorize_url: string }>('/api/v1/mail/connect', {
-      method: 'POST',
-      body: JSON.stringify({ label, mock_identity: identity }),
-    })
-    window.location.href = r.authorize_url
+    setBusy(true)
+    setMessage('')
+    try {
+      const body: Record<string, string> = { label }
+      if (settings?.graph_mock) body.mock_identity = identity
+      else if (hint.trim()) body.login_hint = hint.trim()
+      const r = await api<{ authorize_url: string }>('/api/v1/mail/connect', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      })
+      window.location.href = r.authorize_url
+    } catch (err) {
+      setMessage(err instanceof ApiError ? err.message : 'Could not start Microsoft sign-in')
+      setBusy(false)
+    }
   }
 
   async function act(id: string, path: string, extra: object = {}) {
@@ -62,24 +89,57 @@ export function AccountsPage() {
       <h1 className="font-serif text-4xl text-pine">Inbox accounts</h1>
       <Disclaimer />
       <Card className="mb-6">
-        <h2 className="font-serif text-xl">Connect a Microsoft inbox</h2>
-        <p className="mt-1 text-sm text-slate">Read-only Mail.Read via OAuth. Mailbox passwords are never collected.</p>
+        <h2 className="font-serif text-xl">Connect a Hotmail or Outlook inbox</h2>
+        <p className="mt-2 text-sm text-slate">
+          You do not type your mailbox password here. ReceiptVault sends you to Microsoft. You sign in there; this app only
+          receives a read-only Mail.Read token.
+        </p>
+        {settings && !settings.graph_mock && !settings.ms_client_configured && (
+          <p className="mt-3 rounded-md bg-amber-50 p-3 text-sm">
+            Microsoft sign-in is not configured yet. Open{' '}
+            <Link className="underline" to="/settings">
+              Settings
+            </Link>{' '}
+            and paste the Application (client) ID and client secret from your Entra app. The redirect URI to add in Azure is{' '}
+            <code className="break-all">{settings.oauth_redirect}</code>
+          </p>
+        )}
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           <div>
-            <Label htmlFor="label">Label</Label>
+            <Label htmlFor="label">Label in ReceiptVault</Label>
             <Input id="label" value={label} onChange={(e) => setLabel(e.target.value)} />
           </div>
-          <div>
-            <Label htmlFor="identity">Mock identity (local/demo)</Label>
-            <select id="identity" className="h-10 w-full rounded-md border border-pine/20 bg-white px-2" value={identity} onChange={(e) => setIdentity(e.target.value)}>
-              <option value="hotmail-one">hotmail-one</option>
-              <option value="hotmail-two">hotmail-two</option>
-              <option value="outlook-work">outlook-work</option>
-            </select>
-          </div>
+          {settings?.graph_mock ? (
+            <div>
+              <Label htmlFor="identity">Demo inbox</Label>
+              <select
+                id="identity"
+                className="h-10 w-full rounded-md border border-pine/20 bg-white px-2"
+                value={identity}
+                onChange={(e) => setIdentity(e.target.value)}
+              >
+                <option value="hotmail-one">hotmail-one</option>
+                <option value="hotmail-two">hotmail-two</option>
+                <option value="outlook-work">outlook-work</option>
+              </select>
+            </div>
+          ) : (
+            <div>
+              <Label htmlFor="hint">Your Hotmail / Outlook address (optional)</Label>
+              <Input
+                id="hint"
+                type="email"
+                placeholder="name@hotmail.com"
+                value={hint}
+                onChange={(e) => setHint(e.target.value)}
+              />
+            </div>
+          )}
         </div>
         <div className="mt-3">
-          <Button onClick={connect}>Connect account</Button>
+          <Button onClick={connect} disabled={busy || (settings !== null && !settings.graph_mock && !settings.ms_client_configured)}>
+            {settings?.graph_mock ? 'Connect demo inbox' : 'Sign in with Microsoft'}
+          </Button>
         </div>
         {message && <p className="mt-2 text-sm">{message}</p>}
       </Card>
@@ -90,7 +150,9 @@ export function AccountsPage() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h2 className="font-serif text-2xl">{a.label}</h2>
-                <p className="text-sm text-slate">{a.masked_address} · {a.provider_type}</p>
+                <p className="text-sm text-slate">
+                  {a.masked_address} · {a.provider_type}
+                </p>
               </div>
               <Badge tone={a.scan_status === 'idle' ? 'moss' : 'amber'}>{a.scan_status}</Badge>
             </div>
@@ -105,11 +167,19 @@ export function AccountsPage() {
               <div>Failures {a.failures}</div>
             </dl>
             <div className="mt-4 flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => act(a.id, '/test')}>Test connection</Button>
-              <Button variant="outline" onClick={() => scan(a.id, true)}>Dry-run estimate</Button>
+              <Button variant="outline" onClick={() => act(a.id, '/test')}>
+                Test connection
+              </Button>
+              <Button variant="outline" onClick={() => scan(a.id, true)}>
+                Dry-run estimate
+              </Button>
               <Button onClick={() => scan(a.id)}>Start historical scan</Button>
-              <Button variant="outline" onClick={() => scan(a.id)}>Scan now</Button>
-              <Button variant="danger" onClick={() => act(a.id, '/disconnect')}>Disconnect</Button>
+              <Button variant="outline" onClick={() => scan(a.id)}>
+                Scan now
+              </Button>
+              <Button variant="danger" onClick={() => act(a.id, '/disconnect')}>
+                Disconnect
+              </Button>
             </div>
           </Card>
         ))}

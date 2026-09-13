@@ -29,13 +29,20 @@ export function HelpPage() {
         </p>
       </Card>
       <Card className="mb-4">
-        <h2 className="font-serif text-2xl">Microsoft Entra app registration</h2>
+        <h2 className="font-serif text-2xl">Connect Hotmail or Outlook</h2>
+        <p className="mt-2 text-sm">
+          ReceiptVault never asks for your mailbox password. You register a free Microsoft Entra app (your own), paste the ID and
+          secret under Settings, then click Sign in with Microsoft. Microsoft shows the Hotmail login. After you approve Mail.Read,
+          you return here with the inbox connected.
+        </p>
         <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm">
-          <li>In Microsoft Entra admin centre, register a web application.</li>
-          <li>Add a redirect URI matching Settings → OAuth callback (derived from RECEIPTVAULT_PUBLIC_URL).</li>
-          <li>Enable delegated permissions only: openid, profile, email, offline_access, Mail.Read. Do not add Mail.ReadWrite or Mail.Send.</li>
-          <li>Create a client secret and store it in the root-only environment file.</li>
-          <li>Use the <code>common</code> authority so Hotmail/Outlook personal accounts and work/school accounts can sign in.</li>
+          <li>Open entra.microsoft.com → App registrations → New registration. Name it ReceiptVault.</li>
+          <li>Supported account types: accounts in any organisational directory <em>and</em> personal Microsoft accounts.</li>
+          <li>Redirect URI (Web): copy the exact callback from Settings (it looks like http://192.168.13.13/api/v1/mail/oauth/callback).</li>
+          <li>Certificates &amp; secrets → New client secret. Copy the secret value once.</li>
+          <li>API permissions → Microsoft Graph → Delegated: openid, profile, email, offline_access, Mail.Read. No Mail.ReadWrite or Mail.Send.</li>
+          <li>Settings → paste Application (client) ID and the secret → Save Microsoft app.</li>
+          <li>Inbox accounts → Sign in with Microsoft → log into Hotmail on Microsoft&apos;s page.</li>
         </ol>
       </Card>
       <Card>

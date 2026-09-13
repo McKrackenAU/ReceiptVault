@@ -26,6 +26,7 @@ router = APIRouter(tags=["accounts"])
 class ConnectBody(BaseModel):
     label: str = Field(min_length=1, max_length=120)
     mock_identity: str | None = None
+    login_hint: str | None = None
 
 
 class ScanBody(BaseModel):
@@ -65,7 +66,9 @@ def connect_start(
         )
     )
     db.commit()
-    if settings.graph_mock or body.mock_identity:
+    # Mock inboxes are only for GRAPH_MOCK. Never treat a UI leftover field as
+    # a real Microsoft sign-in — that skipped Hotmail login entirely.
+    if settings.graph_mock:
         identity = body.mock_identity or "hotmail-one"
         if identity not in MOCK_IDENTITIES:
             raise AppError(400, "Unknown mock identity", "Use hotmail-one, hotmail-two, or outlook-work")
@@ -80,6 +83,7 @@ def connect_start(
         state=state,
         challenge=challenge,
         scopes=MS_SCOPES,
+        login_hint=body.login_hint,
     )
     return {"authorize_url": url, "mock": False}
 
