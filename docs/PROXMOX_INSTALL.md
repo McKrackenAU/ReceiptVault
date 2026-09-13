@@ -42,12 +42,14 @@ bash /root/install-receiptvault.sh
 
 ## 3. What the helper asks
 
-1. Default / Advanced / Repair / Update / Backup / Restore / Uninstall  
+1. Default / Advanced / Fix LAN IP / Repair / Update / Backup / Restore / Uninstall  
 2. CTID, hostname, storage, disk  
 3. Advanced only: CPU, RAM, bridge, DHCP or static IP, unprivileged toggle, git URL  
 4. Evidence storage: LXC disk, new host bind mount, or existing NFS/host path  
-5. LAN port (default **8080**)  
+5. LAN port (default **80** for static IP so `http://<ip>/` works, otherwise **8080**)  
 6. Cloudflare: skip, existing tunnel, or paste a tunnel token into a password box (not logged)
+
+A static address must be on the same subnet as the Proxmox bridge. If the host is `192.168.14.1`, use `192.168.14.13/24`, not `192.168.13.13`. A bare IPv4 is stored as `/24`. To change an existing CT, re-run the helper and choose **Fix / change LAN IP**.
 
 It then creates the LXC, installs PostgreSQL, Redis, Caddy, OCR, builds the app, enables systemd, and prints:
 

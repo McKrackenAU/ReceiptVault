@@ -5,6 +5,11 @@ set -euo pipefail
 APP_ROOT="${APP_ROOT:-/opt/receiptvault}"
 ENV_FILE="${ENV_FILE:-/etc/receiptvault/receiptvault.env}"
 LOG="${LOG:-/var/log/receiptvault-bootstrap.log}"
+export LANG="${LANG:-C.UTF-8}"
+export LC_ALL="${LC_ALL:-C.UTF-8}"
+export LANGUAGE="${LANGUAGE:-C.UTF-8}"
+export DEBIAN_FRONTEND=noninteractive
+export APT_LISTCHANGES_FRONTEND=none
 mkdir -p "$(dirname "$LOG")"
 exec > >(tee -a "$LOG") 2>&1
 
@@ -16,15 +21,23 @@ if [[ ${EUID} -ne 0 ]]; then
   exit 1
 fi
 
-export DEBIAN_FRONTEND=noninteractive
 log "Installing runtime packages"
 apt-get update -y
 apt-get install -y --no-install-recommends \
-  ca-certificates curl git gnupg \
+  ca-certificates curl git gnupg locales \
   python3 python3-venv python3-pip python3-dev build-essential \
   postgresql postgresql-contrib redis-server \
   caddy tesseract-ocr tesseract-ocr-eng ghostscript qpdf libmagic1 poppler-utils \
   libpq-dev
+if [[ -f /etc/locale.gen ]]; then
+  sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
+  sed -i 's/^# *en_AU.UTF-8 UTF-8/en_AU.UTF-8 UTF-8/' /etc/locale.gen
+fi
+locale-gen >/dev/null 2>&1 || true
+update-locale LANG=C.UTF-8 LC_ALL=C.UTF-8 >/dev/null 2>&1 || true
+sysctl -w net.ipv4.ip_unprivileged_port_start=0 >/dev/null 2>&1 || true
+mkdir -p /etc/sysctl.d
+echo 'net.ipv4.ip_unprivileged_port_start=0' >/etc/sysctl.d/20-receiptvault-ports.conf
 
 if ! command -v node >/dev/null || ! node -v | grep -qE 'v(2[0-9]|[3-9])'; then
   log "Installing Node.js 22"
@@ -61,29 +74,54 @@ url = os.environ.get("RECEIPTVAULT_DATABASE_URL", "")
 print(urllib.parse.urlparse(url).password or "")
 PY
 )"
-sudo -u postgres psql -v ON_ERROR_STOP=0 -c "CREATE USER receiptvault LOGIN PASSWORD '${DB_PASS}';" || true
-sudo -u postgres psql -v ON_ERROR_STOP=0 -c "ALTER USER receiptvault WITH PASSWORD '${DB_PASS}';"
-sudo -u postgres psql -v ON_ERROR_STOP=0 -c "CREATE DATABASE receiptvault OWNER receiptvault;" || true
-sudo -u postgres psql -d receiptvault -c "GRANT ALL ON SCHEMA public TO receiptvault; ALTER DATABASE receiptvault OWNER TO receiptvault;"
+runuser -u postgres -- psql -v ON_ERROR_STOP=0 -c "CREATE USER receiptvault LOGIN PASSWORD '${DB_PASS}';" || true
+runuser -u postgres -- psql -v ON_ERROR_STOP=0 -c "ALTER USER receiptvault WITH PASSWORD '${DB_PASS}';"
+runuser -u postgres -- psql -v ON_ERROR_STOP=0 -c "CREATE DATABASE receiptvault OWNER receiptvault;" || true
+runuser -u postgres -- psql -d receiptvault -c "GRANT ALL ON SCHEMA public TO receiptvault; ALTER DATABASE receiptvault OWNER TO receiptvault;"
 
 export PATH="/usr/local/bin:/usr/bin:$PATH"
 log "Installing Python application"
 cd "$APP_ROOT/backend"
-sudo -u receiptvault env PATH="$PATH" uv sync --frozen --no-dev || sudo -u receiptvault env PATH="$PATH" uv sync --no-dev
+runuser -u receiptvault -- env PATH="$PATH" uv sync --frozen --no-dev || runuser -u receiptvault -- env PATH="$PATH" uv sync --no-dev
 
 log "Building web UI"
 cd "$APP_ROOT/frontend"
 if [[ -f package-lock.json ]]; then
-  sudo -u receiptvault env PATH="$PATH" npm ci
+  runuser -u receiptvault -- env PATH="$PATH" npm ci
 else
-  sudo -u receiptvault env PATH="$PATH" npm install
+  runuser -u receiptvault -- env PATH="$PATH" npm install
 fi
-sudo -u receiptvault env PATH="$PATH" npm run build
+runuser -u receiptvault -- env PATH="$PATH" npm run build
+
+if [[ -n "${RECEIPTVAULT_STATIC_CIDR:-}" && -f "$APP_ROOT/deploy/guest-network.sh" ]]; then
+  log "Applying static address ${RECEIPTVAULT_STATIC_CIDR}"
+  RV_CIDR="$RECEIPTVAULT_STATIC_CIDR" RV_GATEWAY="${RECEIPTVAULT_GATEWAY:-}" \
+    RV_DNS="${RECEIPTVAULT_DNS:-1.1.1.1}" bash "$APP_ROOT/deploy/guest-network.sh"
+fi
 
 log "Installing systemd units and Caddy"
 install -m 0644 "$APP_ROOT/deploy/systemd/receiptvault.service" /etc/systemd/system/receiptvault.service
 install -m 0644 "$APP_ROOT/deploy/systemd/receiptvault-worker.service" /etc/systemd/system/receiptvault-worker.service
-install -m 0644 "$APP_ROOT/deploy/caddy/Caddyfile" /etc/caddy/Caddyfile
+LAN_PORT="${RECEIPTVAULT_LAN_PORT:-8080}"
+if [[ "$LAN_PORT" == "80" ]]; then
+  LISTENS=":80"
+else
+  LISTENS=":80, :${LAN_PORT}"
+fi
+cat >/etc/caddy/Caddyfile <<EOF
+${LISTENS} {
+	encode gzip
+	request_body {
+		max_size 60MB
+	}
+	reverse_proxy 127.0.0.1:8473
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy same-origin
+		X-Frame-Options DENY
+	}
+}
+EOF
 ln -sf "$APP_ROOT/backend/.venv/bin/receiptvault" /usr/local/bin/receiptvault
 systemctl daemon-reload
 systemctl enable --now caddy receiptvault receiptvault-worker
