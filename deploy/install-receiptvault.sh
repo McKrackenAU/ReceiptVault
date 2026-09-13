@@ -70,6 +70,7 @@ dialog_bin() {
 
 normalize_ipv4_cidr() {
   local raw="${1// /}"
+  local gw="${2:-}"
   raw="${raw#http://}"
   raw="${raw#https://}"
   raw="${raw%%:*}"
@@ -77,7 +78,23 @@ normalize_ipv4_cidr() {
     return 1
   fi
   if [[ "$raw" != */* ]]; then
-    raw="${raw}/24"
+    if [[ -n "$gw" ]]; then
+      raw="$(python3 - "$raw" "$gw" <<'PY'
+import ipaddress, sys
+ip = ipaddress.ip_address(sys.argv[1])
+gw = ipaddress.ip_address(sys.argv[2])
+for prefix in (24, 16, 8):
+    net = ipaddress.ip_network(f"{ip}/{prefix}", strict=False)
+    if gw in net:
+        print(f"{ip}/{prefix}")
+        break
+else:
+    print(f"{ip}/16")
+PY
+)"
+    else
+      raw="${raw}/24"
+    fi
   fi
   if ! python3 -c "import ipaddress,sys; ipaddress.ip_interface(sys.argv[1])" "$raw" 2>/dev/null; then
     return 1
@@ -200,28 +217,14 @@ update-locale LANG=C.UTF-8 LC_ALL=C.UTF-8 >/dev/null 2>&1 || true'
 }
 
 ask_static_network() {
-  local bridge="$1"
-  local br_cidr suggest gw_default
-  br_cidr="$(host_bridge_cidr "$bridge" || true)"
-  suggest=""
-  gw_default=""
-  if [[ -n "$br_cidr" ]]; then
-    suggest="$(suggest_static_cidr "$br_cidr" 13 || true)"
-    gw_default="${br_cidr%%/*}"
-  fi
-  local raw cidr
-  raw="$(ask "Static IPv4. Same subnet as ${bridge} (${br_cidr:-unknown}). CIDR optional — 192.168.14.13 becomes 192.168.14.13/24." "${suggest}")"
-  if ! cidr="$(normalize_ipv4_cidr "$raw")"; then
-    msg "That is not a valid IPv4 address. Use 192.168.14.13 or 192.168.14.13/24."
+  local raw cidr gw dns
+  raw="$(ask "LXC IPv4 (CIDR optional)" "192.168.13.13")"
+  gw="$(ask "Router / gateway (internet for inbox scan)" "192.168.1.1")"
+  dns="$(ask "DNS" "1.1.1.1")"
+  if ! cidr="$(normalize_ipv4_cidr "$raw" "$gw")"; then
+    msg "That is not a valid IPv4 address."
     exit 1
   fi
-  if [[ -n "$br_cidr" ]] && ! cidr_contains_address "$br_cidr" "$cidr"; then
-    yesno "WARNING: ${cidr} is not on ${bridge} (${br_cidr}). Other LAN machines (including this Proxmox host) will not reach it.\n\nContinue anyway?" || exit 0
-  fi
-  local gw
-  gw="$(ask "Gateway (required for internet and for other subnets)" "${gw_default:-$(guess_gateway_from_cidr "$cidr")}")"
-  local dns
-  dns="$(ask "DNS" "1.1.1.1")"
   STATIC_CIDR="$cidr"
   STATIC_IP="$(ipv4_from_cidr "$cidr")"
   GW="$gw"
@@ -271,7 +274,7 @@ menu() { $UI --title "$APP" --menu "$1" 22 78 12 "${@:2}" 3>&1 1>&2 2>&3; }
 msg() { $UI --title "$APP" --msgbox "$1" 18 78; }
 gauge() { $UI --title "$APP" --gauge "$1" 10 74 "$2"; }
 
-$UI --title "$APP $VERSION" --msgbox "This helper creates or manages an unprivileged Debian 13 LXC and installs ${APP}.\n\nIt will install PostgreSQL, Redis, Caddy, OCR tools, and the application.\n\nStatic IPv4 must be on the same subnet as the chosen bridge (your Proxmox host). A bare address such as 192.168.14.13 is stored as 192.168.14.13/24.\n\nNever paste mailbox passwords or Cloudflare tokens on the wget/curl line.\n\nSource: ${REPO_URL}" 22 78
+$UI --title "$APP $VERSION" --msgbox "Installs an unprivileged Debian LXC and ${APP}.\n\nTypical LAN:\n  LXC  192.168.13.13\n  Router  192.168.1.1  (internet / mailbox scan)\n  Open  http://192.168.13.13:8082/\n\nCaddy is not used on the LAN.\n\nSource: ${REPO_URL}" 20 78
 
 MODE="$(menu "What do you want to do?" \
   default "Default install (recommended)" \

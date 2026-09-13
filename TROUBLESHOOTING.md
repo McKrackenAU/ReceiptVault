@@ -1,33 +1,12 @@
 # Troubleshooting
 
-## Installer locale warnings (perl / apt-listchanges)
+## Open the app
 
-A red bar at about 78% is the progress gauge starting the in-container bootstrap, not a crash. Lines like `Cannot set LC_ALL to default locale` on a fresh Debian LXC are warnings. Current installer sets `C.UTF-8` before apt. If an older run stopped, check:
+On a normal LAN the LXC is **192.168.13.13**, the router is **192.168.1.1**, and you open:
 
-```bash
-tail -n 80 /var/tmp/receiptvault-install.log
-pct exec <CTID> -- tail -n 80 /var/log/receiptvault-bootstrap.log
-```
+**http://192.168.13.13:8082/**
 
-Then re-run the helper and choose **Repair** or **Update**.
-
-## Static IP not reachable
-
-Your Proxmox host (for example `https://192.168.14.1:8006`) and the container must be on the **same subnet**. `192.168.13.13` is a different network from `192.168.14.1/24`. Use `192.168.14.13/24` with gateway `192.168.14.1` unless you really have a `192.168.13.0/24` router.
-
-Fix an already-installed CT without reinstalling: re-download the helper and choose **Fix / change LAN IP**. Or on the host:
-
-```bash
-pct set <CTID> --net0 name=eth0,bridge=vmbr0,firewall=0,ip=192.168.14.13/24,gw=192.168.14.1
-pct exec <CTID> -- env RV_CIDR=192.168.14.13/24 RV_GATEWAY=192.168.14.1 bash /opt/receiptvault/deploy/guest-network.sh
-pct exec <CTID> -- systemctl restart caddy
-```
-
-Then open `http://192.168.14.13/` (port 80) or `http://192.168.14.13:8080`.
-
-## Cannot open the app / still see Caddy
-
-Run this **on the Proxmox host** (the shell where `pct` works), not inside the LXC:
+If that is not working, run this **on the Proxmox host**:
 
 ```bash
 wget -O /root/fix-receiptvault.sh \
@@ -35,7 +14,7 @@ wget -O /root/fix-receiptvault.sh \
 bash /root/fix-receiptvault.sh
 ```
 
-On a dedicated Proxmox box the host can stay **192.168.14.1** (management) while the LXC stays **192.168.13.13** (app LAN). The script plugs the CT into the bridge that already has `192.168.13.x` (or `vmbr1` if that exists), keeps `.13.13`, and forwards `http://192.168.14.1:8082/` to the LXC. From the management laptop use **http://192.168.14.1:8082/**. From the `.13` LAN use **http://192.168.13.13:8082/**.
+That sets `192.168.13.13/16` with gateway `192.168.1.1`, stops Caddy, and starts ReceiptVault on port 8082.
 
 ## App will not start
 
@@ -53,6 +32,7 @@ Setup is one-time. Reset the owner with `receiptvault reset-password` rather tha
 - Personal Hotmail/Outlook need the `common` authority.
 - Tenant policy may block unverified apps; an admin may need to allow `Mail.Read`.
 - For local tests set `RECEIPTVAULT_GRAPH_MOCK=true` and use the three mock identities.
+- The LXC must reach the internet via **192.168.1.1**.
 
 ## Scan stuck or duplicated
 

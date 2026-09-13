@@ -3,6 +3,7 @@
 
 normalize_ipv4_cidr() {
   local raw="${1// /}"
+  local gw="${2:-}"
   raw="${raw#http://}"
   raw="${raw#https://}"
   raw="${raw%%:*}"
@@ -10,7 +11,23 @@ normalize_ipv4_cidr() {
     return 1
   fi
   if [[ "$raw" != */* ]]; then
-    raw="${raw}/24"
+    if [[ -n "$gw" ]]; then
+      raw="$(python3 - "$raw" "$gw" <<'PY'
+import ipaddress, sys
+ip = ipaddress.ip_address(sys.argv[1])
+gw = ipaddress.ip_address(sys.argv[2])
+for prefix in (24, 16, 8):
+    net = ipaddress.ip_network(f"{ip}/{prefix}", strict=False)
+    if gw in net:
+        print(f"{ip}/{prefix}")
+        break
+else:
+    print(f"{ip}/16")
+PY
+)"
+    else
+      raw="${raw}/24"
+    fi
   fi
   if ! python3 -c "import ipaddress,sys; ipaddress.ip_interface(sys.argv[1])" "$raw" 2>/dev/null; then
     return 1

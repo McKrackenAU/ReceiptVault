@@ -80,7 +80,7 @@ wget -O /root/fix-receiptvault.sh \
 bash /root/fix-receiptvault.sh
 ```
 
-If the host is `192.168.14.1` and the LXC is `192.168.13.13`, open `http://192.168.14.1:8082/` from the Proxmox laptop, or `http://192.168.13.13:8082/` from the `.13` network.
+Then open **http://192.168.13.13:8082/**. The LXC uses router **192.168.1.1** for internet (mailbox scan).
 
 ## 6. After install
 

@@ -47,6 +47,10 @@ def test_normalize_ipv4_adds_slash24():
     assert _fn('normalize_ipv4_cidr 192.168.13.13') == "192.168.13.13/24"
 
 
+def test_normalize_uses_slash16_when_router_is_on_another_octet():
+    assert _fn('normalize_ipv4_cidr 192.168.13.13 192.168.1.1') == "192.168.13.13/16"
+
+
 def test_normalize_ipv4_keeps_prefix():
     assert _fn('normalize_ipv4_cidr 192.168.14.13/24') == "192.168.14.13/24"
 
