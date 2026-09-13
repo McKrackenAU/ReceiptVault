@@ -613,6 +613,12 @@ ENVEOF
       echo "REFUSING to mark the install OK: http://${ACCESS_IP}/ is still the Caddy welcome page." | tee -a "$LOG"
       exit 1
     fi
+    if ! echo "$page" | grep -qi 'ok\|ReceiptVault\|<!doctype\|<html'; then
+      echo "Host cannot load http://${ACCESS_IP}/ — applying LAN fix from the local tree." | tee -a "$LOG"
+      if [[ -n "${LOCAL_SOURCE:-}" && -f "$LOCAL_SOURCE/deploy/fix-from-host.sh" ]]; then
+        bash "$LOCAL_SOURCE/deploy/fix-from-host.sh" "$CTID" "$ACCESS_IP" "$GW" >>"$LOG" 2>&1 || true
+      fi
+    fi
   fi
   echo 100
   echo OK >"$STATUS"
