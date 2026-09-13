@@ -8,9 +8,9 @@
 #
 # After that, type: receiptvault-update
 #
-# Downloads ReceiptVault from GitHub on the HOST, unpacks it in the LXC,
-# purges Caddy, and binds the app on http://<lxc-ip>/
-echo "ReceiptVault 1.5.1 — refresh app from GitHub, purge Caddy, bind :80"
+# Puts the LXC on the same LAN as this Proxmox host (usually 192.168.14.13
+# if the Proxmox UI is https://192.168.14.1:8006).
+echo "ReceiptVault 1.5.2 — put the app on the Proxmox LAN, bind :80"
 set -euo pipefail
 export LANG=C.UTF-8 LC_ALL=C.UTF-8 DEBIAN_FRONTEND=noninteractive
 
@@ -19,11 +19,30 @@ if [[ ${EUID} -ne 0 ]] || ! command -v pct >/dev/null; then
   exit 1
 fi
 
+# shellcheck source=lib-network.sh
+if [[ -f "$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd)/lib-network.sh" ]]; then
+  # shellcheck disable=SC1091
+  source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib-network.sh"
+fi
+
 CTID="${1:-}"
-LXC_IP="${2:-192.168.13.13}"
-LXC_GW="${3:-${RECEIPTVAULT_GATEWAY:-192.168.1.1}}"
 BRIDGE="${RECEIPTVAULT_BRIDGE:-vmbr0}"
 DNS="${RECEIPTVAULT_DNS:-1.1.1.1}"
+if [[ -n "${2:-}" ]]; then
+  LXC_IP="$2"
+  LXC_GW="${3:-${RECEIPTVAULT_GATEWAY:-}}"
+else
+  LAN="$(detect_lan_on_bridge "$BRIDGE" 2>/dev/null || true)"
+  LXC_IP="${LAN%% *}"
+  rest="${LAN#* }"
+  LXC_GW="${rest%% *}"
+fi
+if [[ -z "${LXC_IP:-}" ]]; then
+  LXC_IP="192.168.14.13"
+fi
+if [[ -z "${LXC_GW:-}" ]]; then
+  LXC_GW="192.168.14.1"
+fi
 
 LXC_CIDR="$(python3 - "$LXC_IP" "$LXC_GW" <<'PY'
 import ipaddress, sys

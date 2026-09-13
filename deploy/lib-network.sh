@@ -82,6 +82,38 @@ raise SystemExit(0 if addr in net else 1)
 PY
 }
 
+# Prints: LXC_IP GATEWAY CIDR  on the same IPv4 network as the Proxmox bridge.
+# Example: 192.168.14.13 192.168.14.1 192.168.14.13/24
+detect_lan_on_bridge() {
+  local br="${1:-vmbr0}"
+  python3 - "$br" <<'PY'
+import ipaddress, subprocess, sys
+bridge = sys.argv[1]
+out = subprocess.check_output(["ip", "-4", "-o", "addr", "show", "dev", bridge], text=True, stderr=subprocess.DEVNULL)
+cidr = None
+for line in out.splitlines():
+    parts = line.split()
+    if "inet" in parts:
+        cidr = parts[parts.index("inet") + 1]
+        break
+if not cidr:
+    raise SystemExit(1)
+iface = ipaddress.ip_interface(cidr)
+net = iface.network
+host = iface.ip
+# Prefer .13 on this LAN so browsers that already open Proxmox on this subnet can reach it.
+candidate = ipaddress.ip_address(int(net.network_address) + 13)
+if candidate not in net or candidate == host or candidate == net.broadcast_address:
+    candidate = ipaddress.ip_address(int(net.network_address) + 23)
+    if candidate not in net or candidate == host:
+        for addr in net.hosts():
+            if addr != host:
+                candidate = addr
+                break
+print(f"{candidate} {host} {candidate}/{net.prefixlen}")
+PY
+}
+
 public_url_for() {
   local ip="$1"
   local port="$2"

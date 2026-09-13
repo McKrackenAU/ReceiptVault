@@ -113,6 +113,35 @@ host_bridge_cidr() {
   ip -4 -o addr show dev "$1" 2>/dev/null | awk '{print $4; exit}'
 }
 
+detect_lan_on_bridge() {
+  local br="${1:-vmbr0}"
+  python3 - "$br" <<'PY'
+import ipaddress, subprocess, sys
+bridge = sys.argv[1]
+out = subprocess.check_output(["ip", "-4", "-o", "addr", "show", "dev", bridge], text=True, stderr=subprocess.DEVNULL)
+cidr = None
+for line in out.splitlines():
+    parts = line.split()
+    if "inet" in parts:
+        cidr = parts[parts.index("inet") + 1]
+        break
+if not cidr:
+    raise SystemExit(1)
+iface = ipaddress.ip_interface(cidr)
+net = iface.network
+host = iface.ip
+candidate = ipaddress.ip_address(int(net.network_address) + 13)
+if candidate not in net or candidate == host or candidate == net.broadcast_address:
+    candidate = ipaddress.ip_address(int(net.network_address) + 23)
+    if candidate not in net or candidate == host:
+        for addr in net.hosts():
+            if addr != host:
+                candidate = addr
+                break
+print(f"{candidate} {host} {candidate}/{net.prefixlen}")
+PY
+}
+
 suggest_static_cidr() {
   python3 - "$1" "${2:-13}" <<'PY'
 import ipaddress, sys
@@ -222,8 +251,14 @@ update-locale LANG=C.UTF-8 LC_ALL=C.UTF-8 >/dev/null 2>&1 || true'
 
 ask_static_network() {
   local raw cidr gw dns
-  raw="$(ask "LXC IPv4 (CIDR optional)" "192.168.13.13")"
-  gw="$(ask "Router / gateway (internet for inbox scan)" "192.168.1.1")"
+  local suggest_ip="192.168.14.13" suggest_gw="192.168.14.1"
+  if lan="$(detect_lan_on_bridge "${1:-vmbr0}" 2>/dev/null)"; then
+    suggest_ip="${lan%% *}"
+    rest="${lan#* }"
+    suggest_gw="${rest%% *}"
+  fi
+  raw="$(ask "LXC IPv4 — must be on the same LAN as this Proxmox host" "$suggest_ip")"
+  gw="$(ask "Gateway (usually this Proxmox host, e.g. 192.168.14.1)" "$suggest_gw")"
   dns="$(ask "DNS" "1.1.1.1")"
   if ! cidr="$(normalize_ipv4_cidr "$raw" "$gw")"; then
     msg "That is not a valid IPv4 address."
