@@ -8,8 +8,7 @@
 #
 # After that, type: receiptvault-update
 #
-# Puts the LXC on the same LAN as this Proxmox host (usually 192.168.14.13
-# if the Proxmox UI is https://192.168.14.1:8006).
+# Puts the LXC on this host LAN (default 192.168.13.14, prefix from the bridge).
 echo "ReceiptVault 1.5.2 — put the app on the Proxmox LAN, bind :80"
 set -euo pipefail
 export LANG=C.UTF-8 LC_ALL=C.UTF-8 DEBIAN_FRONTEND=noninteractive
@@ -38,25 +37,17 @@ else
   LXC_GW="${rest%% *}"
 fi
 if [[ -z "${LXC_IP:-}" ]]; then
-  LXC_IP="192.168.14.13"
+  LXC_IP="${PREFERRED_LXC_IP:-192.168.13.14}"
 fi
 if [[ -z "${LXC_GW:-}" ]]; then
-  LXC_GW="192.168.14.1"
+  LXC_GW="$(host_ipv4_on_bridge "$BRIDGE" 2>/dev/null || true)"
 fi
 
-LXC_CIDR="$(python3 - "$LXC_IP" "$LXC_GW" <<'PY'
-import ipaddress, sys
-ip = ipaddress.ip_address(sys.argv[1])
-gw = ipaddress.ip_address(sys.argv[2])
-for prefix in (24, 16, 8):
-    net = ipaddress.ip_network(f"{ip}/{prefix}", strict=False)
-    if gw in net:
-        print(f"{ip}/{prefix}")
-        break
-else:
-    print(f"{ip}/16")
-PY
-)"
+if [[ -n "${LXC_GW:-}" ]]; then
+  LXC_CIDR="$(normalize_ipv4_cidr "$LXC_IP" "$LXC_GW")"
+else
+  LXC_CIDR="$(normalize_ipv4_cidr "$LXC_IP")"
+fi
 
 find_ct() {
   local id
@@ -421,6 +412,6 @@ echo
 if [[ -f "$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd)/publish-on-host.sh" ]]; then
   bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/publish-on-host.sh" "$CTID" || true
 fi
-echo "Open http://192.168.14.1:8484/ on the desktop (same IP as the Proxmox UI)."
-echo "Do not use 192.168.13.13. Hard-refresh (Ctrl+Shift+R). Settings must show 1.5.1."
+echo "Open http://${LXC_IP}/ on the desktop."
+echo "Hard-refresh (Ctrl+Shift+R). Settings must show 1.5.1."
 echo "Next update: cd /root/ReceiptVault && git pull && bash deploy/install-receiptvault.sh"

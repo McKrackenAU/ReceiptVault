@@ -53,29 +53,37 @@ def _fn(expr: str) -> str:
     return result.stdout.strip()
 
 
-def test_normalize_ipv4_adds_slash24():
-    assert _fn('normalize_ipv4_cidr 192.168.13.13') == "192.168.13.13/24"
+def test_normalize_ipv4_adds_slash20():
+    assert _fn('normalize_ipv4_cidr 192.168.13.14') == "192.168.13.14/20"
 
 
-def test_normalize_uses_slash16_when_router_is_on_another_octet():
-    assert _fn('normalize_ipv4_cidr 192.168.13.13 192.168.1.1') == "192.168.13.13/16"
+def test_normalize_uses_slash20_when_host_is_on_another_octet():
+    assert _fn('normalize_ipv4_cidr 192.168.13.14 192.168.14.1') == "192.168.13.14/20"
 
 
 def test_normalize_ipv4_keeps_prefix():
-    assert _fn('normalize_ipv4_cidr 192.168.14.13/24') == "192.168.14.13/24"
+    assert _fn('normalize_ipv4_cidr 192.168.13.14/20') == "192.168.13.14/20"
 
 
 def test_normalize_strips_url_and_port():
-    assert _fn('normalize_ipv4_cidr http://192.168.14.13:8080') == "192.168.14.13/24"
+    assert _fn('normalize_ipv4_cidr http://192.168.13.14:8080') == "192.168.13.14/20"
 
 
 def test_public_url_omits_port_80():
-    assert _fn('public_url_for 192.168.14.13 80') == "http://192.168.14.13"
-    assert _fn('public_url_for 192.168.14.13 8080') == "http://192.168.14.13:8080"
+    assert _fn('public_url_for 192.168.13.14 80') == "http://192.168.13.14"
+    assert _fn('public_url_for 192.168.13.14 8080') == "http://192.168.13.14:8080"
 
 
 def test_suggest_static_keeps_octet_on_host_subnet():
-    assert _fn('suggest_static_cidr 192.168.14.1/24 13') == "192.168.14.13/24"
+    assert _fn('suggest_static_cidr 192.168.13.0/24 14') == "192.168.13.14/24"
+
+
+def test_choose_lxc_prefers_13_14_on_slash20():
+    assert _fn('choose_lxc_on_host_cidr 192.168.14.1/20') == "192.168.13.14 192.168.14.1 192.168.13.14/20"
+
+
+def test_choose_lxc_widens_to_slash20_if_host_iface_is_slash24():
+    assert _fn('choose_lxc_on_host_cidr 192.168.14.1/24') == "192.168.13.14 192.168.14.1 192.168.13.14/20"
 
 
 def test_fix_and_update_download_github_on_the_host():
@@ -95,16 +103,16 @@ def test_fix_and_update_download_github_on_the_host():
     _bash_n(DEPLOY / "publish-on-host.sh")
 
 
-def test_cidr_contains_same_subnet_only():
+def test_cidr_contains_slash20_covers_both_octets():
     ok = subprocess.run(
-        ["bash", "-lc", f"source {DEPLOY / 'lib-network.sh'}; cidr_contains_address 192.168.14.1/24 192.168.14.13"],
+        ["bash", "-lc", f"source {DEPLOY / 'lib-network.sh'}; cidr_contains_address 192.168.14.1/20 192.168.13.14"],
         capture_output=True,
         text=True,
     )
-    bad = subprocess.run(
-        ["bash", "-lc", f"source {DEPLOY / 'lib-network.sh'}; cidr_contains_address 192.168.14.1/24 192.168.13.13"],
+    tight = subprocess.run(
+        ["bash", "-lc", f"source {DEPLOY / 'lib-network.sh'}; cidr_contains_address 192.168.14.1/24 192.168.13.14"],
         capture_output=True,
         text=True,
     )
     assert ok.returncode == 0
-    assert bad.returncode == 1
+    assert tight.returncode == 1

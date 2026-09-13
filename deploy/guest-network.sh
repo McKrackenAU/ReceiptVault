@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Apply a static IPv4 address inside the ReceiptVault LXC.
-# Env: RV_CIDR=192.168.14.13/24 RV_GATEWAY=192.168.14.1 RV_DNS=1.1.1.1 RV_IFACE=eth0
+# Env: RV_CIDR=192.168.13.14/20 RV_GATEWAY=<host-bridge-ip> RV_DNS=1.1.1.1 RV_IFACE=eth0
 set -euo pipefail
 export LANG="${LANG:-C.UTF-8}"
 export LC_ALL="${LC_ALL:-C.UTF-8}"
@@ -11,11 +11,11 @@ GATEWAY="${RV_GATEWAY:-}"
 DNS="${RV_DNS:-1.1.1.1}"
 
 if [[ -z "$CIDR" ]]; then
-  echo "RV_CIDR is required (for example 192.168.14.13/24)" >&2
+  echo "RV_CIDR is required (for example 192.168.13.14/20)" >&2
   exit 1
 fi
 if [[ "$CIDR" != */* ]]; then
-  CIDR="${CIDR}/24"
+  CIDR="${CIDR}/20"
 fi
 ADDR="${CIDR%%/*}"
 

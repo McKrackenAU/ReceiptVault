@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 # Purge Caddy and put ReceiptVault on http://<ip>/ (port 80).
 #
-#   pct exec <CTID> -- bash /opt/receiptvault/deploy/make-reachable.sh 192.168.13.13
+#   pct exec <CTID> -- bash /opt/receiptvault/deploy/make-reachable.sh 192.168.13.14
 set -euo pipefail
 export LANG="${LANG:-C.UTF-8}" LC_ALL="${LC_ALL:-C.UTF-8}" DEBIAN_FRONTEND=noninteractive
 
 APP_ROOT="${APP_ROOT:-/opt/receiptvault}"
 ENV_FILE="${ENV_FILE:-/etc/receiptvault/receiptvault.env}"
-IP="${1:-${RV_IP:-192.168.13.13}}"
+if [[ -f "${APP_ROOT}/deploy/lib-network.sh" ]]; then
+  # shellcheck source=lib-network.sh
+  source "${APP_ROOT}/deploy/lib-network.sh"
+fi
+IP="${1:-${RV_IP:-${PREFERRED_LXC_IP:-192.168.13.14}}}"
 PUBLIC_PORT="${2:-${RV_PORT:-80}}"
 CIDR="${RV_CIDR:-}"
 GATEWAY="${RV_GATEWAY:-}"
@@ -18,27 +22,15 @@ else
   CIDR="$IP"
   IP="${IP%%/*}"
 fi
-if [[ -z "$GATEWAY" ]]; then
-  if [[ "$IP" == "192.168.13.13" ]]; then
-    GATEWAY="192.168.1.1"
+if [[ -z "$CIDR" ]]; then
+  if command -v normalize_ipv4_cidr >/dev/null 2>&1; then
+    CIDR="$(normalize_ipv4_cidr "$IP" "${GATEWAY:-}")"
   else
-    GATEWAY="${IP%.*}.1"
+    CIDR="${IP}/${DEFAULT_PREFIX:-20}"
   fi
 fi
-if [[ -z "$CIDR" ]]; then
-  CIDR="$(python3 - "$IP" "$GATEWAY" <<'PY'
-import ipaddress, sys
-ip = ipaddress.ip_address(sys.argv[1])
-gw = ipaddress.ip_address(sys.argv[2])
-for prefix in (24, 16, 8):
-    net = ipaddress.ip_network(f"{ip}/{prefix}", strict=False)
-    if gw in net:
-        print(f"{ip}/{prefix}")
-        break
-else:
-    print(f"{ip}/16")
-PY
-)"
+if [[ -z "$GATEWAY" ]]; then
+  GATEWAY="${IP%.*}.1"
 fi
 
 if [[ ${EUID} -ne 0 ]]; then

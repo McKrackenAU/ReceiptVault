@@ -58,9 +58,9 @@ bash deploy/install-receiptvault.sh
 
 First time: `git clone --depth 1 https://github.com/McKrackenAU/ReceiptVault.git /root/ReceiptVault` then the same `bash deploy/install-receiptvault.sh`.
 
-Choose **Update** for an existing CT, or **Default install** for a new one. Use an IPv4 on the **same LAN as the Proxmox UI** (if Proxmox is `https://192.168.14.1:8006`, use `192.168.14.13` and gateway `192.168.14.1`).
+Choose **Default install** for a new CT. Accept the suggested LXC IPv4 (`192.168.13.14`) and the suggested gateway (this host's address on the bridge). The prefix comes from the host LAN (`/20` here).
 
-When it finishes, open **http://192.168.14.1:8484/** on the desktop (same IP as Proxmox, port 8484). Create the owner, save the Microsoft app in Settings, connect Hotmail, start the historical scan.
+When it finishes, open **http://192.168.13.14/** on the desktop. Create the owner, save the Microsoft app in Settings, connect Hotmail, start the historical scan.
 
 ## Operator commands
 

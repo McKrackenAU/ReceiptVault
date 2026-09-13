@@ -6,6 +6,12 @@
 #   bash deploy/install-receiptvault.sh
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd || true)"
+if [[ -n "${SCRIPT_DIR}" && -f "${SCRIPT_DIR}/lib-network.sh" ]]; then
+  # shellcheck source=lib-network.sh
+  source "${SCRIPT_DIR}/lib-network.sh"
+fi
+
 VERSION="1.5.1"
 APP="ReceiptVault"
 REPO_URL="${RECEIPTVAULT_REPO:-https://github.com/McKrackenAU/ReceiptVault.git}"
@@ -62,116 +68,6 @@ dialog_bin() {
   fi
 }
 
-normalize_ipv4_cidr() {
-  local raw="${1// /}"
-  local gw="${2:-}"
-  raw="${raw#http://}"
-  raw="${raw#https://}"
-  raw="${raw%%:*}"
-  if [[ -z "$raw" ]]; then
-    return 1
-  fi
-  if [[ "$raw" != */* ]]; then
-    if [[ -n "$gw" ]]; then
-      raw="$(python3 - "$raw" "$gw" <<'PY'
-import ipaddress, sys
-ip = ipaddress.ip_address(sys.argv[1])
-gw = ipaddress.ip_address(sys.argv[2])
-for prefix in (24, 16, 8):
-    net = ipaddress.ip_network(f"{ip}/{prefix}", strict=False)
-    if gw in net:
-        print(f"{ip}/{prefix}")
-        break
-else:
-    print(f"{ip}/16")
-PY
-)"
-    else
-      raw="${raw}/24"
-    fi
-  fi
-  if ! python3 -c "import ipaddress,sys; ipaddress.ip_interface(sys.argv[1])" "$raw" 2>/dev/null; then
-    return 1
-  fi
-  printf '%s\n' "$raw"
-}
-
-ipv4_from_cidr() { printf '%s\n' "${1%%/*}"; }
-
-guess_gateway_from_cidr() {
-  local ip="${1%%/*}"
-  printf '%s\n' "${ip%.*}.1"
-}
-
-host_bridge_cidr() {
-  ip -4 -o addr show dev "$1" 2>/dev/null | awk '{print $4; exit}'
-}
-
-detect_lan_on_bridge() {
-  local br="${1:-vmbr0}"
-  python3 - "$br" <<'PY'
-import ipaddress, subprocess, sys
-bridge = sys.argv[1]
-out = subprocess.check_output(["ip", "-4", "-o", "addr", "show", "dev", bridge], text=True, stderr=subprocess.DEVNULL)
-cidr = None
-for line in out.splitlines():
-    parts = line.split()
-    if "inet" in parts:
-        cidr = parts[parts.index("inet") + 1]
-        break
-if not cidr:
-    raise SystemExit(1)
-iface = ipaddress.ip_interface(cidr)
-net = iface.network
-host = iface.ip
-candidate = ipaddress.ip_address(int(net.network_address) + 13)
-if candidate not in net or candidate == host or candidate == net.broadcast_address:
-    candidate = ipaddress.ip_address(int(net.network_address) + 23)
-    if candidate not in net or candidate == host:
-        for addr in net.hosts():
-            if addr != host:
-                candidate = addr
-                break
-print(f"{candidate} {host} {candidate}/{net.prefixlen}")
-PY
-}
-
-suggest_static_cidr() {
-  python3 - "$1" "${2:-13}" <<'PY'
-import ipaddress, sys
-net = ipaddress.ip_network(sys.argv[1], strict=False)
-prefer = int(sys.argv[2])
-hosts = list(net.hosts())
-if not hosts:
-    raise SystemExit(1)
-chosen = None
-for addr in hosts:
-    if int(str(addr).rsplit(".", 1)[-1]) == prefer:
-        chosen = addr
-        break
-if chosen is None:
-    chosen = hosts[min(12, len(hosts) - 1)]
-print(f"{chosen}/{net.prefixlen}")
-PY
-}
-
-cidr_contains_address() {
-  python3 - "$1" "$2" <<'PY'
-import ipaddress, sys
-net = ipaddress.ip_network(sys.argv[1], strict=False)
-addr = ipaddress.ip_address(sys.argv[2].split("/")[0])
-raise SystemExit(0 if addr in net else 1)
-PY
-}
-
-public_url_for() {
-  if [[ "$2" == "80" ]]; then
-    printf 'http://%s\n' "$1"
-  else
-    printf 'http://%s:%s\n' "$1" "$2"
-  fi
-}
-
 net0_line() {
   local bridge="$1" cidr="$2" gw="$3"
   local line="name=eth0,bridge=${bridge},firewall=0,ip=${cidr}"
@@ -197,7 +93,7 @@ IFACE="${RV_IFACE:-eth0}"
 CIDR="$RV_CIDR"
 GATEWAY="${RV_GATEWAY:-}"
 DNS="${RV_DNS:-1.1.1.1}"
-[[ "$CIDR" == */* ]] || CIDR="${CIDR}/24"
+[[ "$CIDR" == */* ]] || CIDR="${CIDR}/${DEFAULT_PREFIX:-20}"
 ADDR="${CIDR%%/*}"
 mkdir -p /etc/network /etc/sysctl.d
 cat >/etc/network/interfaces <<EOF
@@ -245,14 +141,17 @@ update-locale LANG=C.UTF-8 LC_ALL=C.UTF-8 >/dev/null 2>&1 || true'
 
 ask_static_network() {
   local raw cidr gw dns lan rest
-  local suggest_ip="192.168.14.13" suggest_gw="192.168.14.1"
+  local suggest_ip="${PREFERRED_LXC_IP:-192.168.13.14}" suggest_gw=""
   if lan="$(detect_lan_on_bridge "${1:-vmbr0}" 2>/dev/null)"; then
     suggest_ip="${lan%% *}"
     rest="${lan#* }"
     suggest_gw="${rest%% *}"
   fi
-  raw="$(ask "LXC IPv4 — must be on the same LAN as this Proxmox host" "$suggest_ip")"
-  gw="$(ask "Gateway (usually this Proxmox host, e.g. 192.168.14.1)" "$suggest_gw")"
+  if [[ -z "$suggest_gw" ]]; then
+    suggest_gw="$(host_ipv4_on_bridge "${1:-vmbr0}" 2>/dev/null || true)"
+  fi
+  raw="$(ask "LXC IPv4 on this LAN" "$suggest_ip")"
+  gw="$(ask "Gateway (this Proxmox host address on the bridge)" "$suggest_gw")"
   dns="$(ask "DNS" "1.1.1.1")"
   if ! cidr="$(normalize_ipv4_cidr "$raw" "$gw")"; then
     msg "That is not a valid IPv4 address."
@@ -346,7 +245,7 @@ menu() { $UI --title "$APP" --menu "$1" 22 78 12 "${@:2}" 3>&1 1>&2 2>&3; }
 msg() { $UI --title "$APP" --msgbox "$1" 18 78; }
 gauge() { $UI --title "$APP" --gauge "$1" 10 74 "$2"; }
 
-$UI --title "$APP $VERSION" --msgbox "Installs an unprivileged Debian LXC and ${APP}.\n\nChoose Update for an existing CT, or Default install for a new one.\nWhen it finishes, open http://<this-Proxmox-IP>:8484/\n(same IP as the Proxmox UI, port 8484 — not 192.168.13.13).\n\nSource: ${REPO_URL}" 16 78
+$UI --title "$APP $VERSION" --msgbox "Installs an unprivileged Debian LXC and ${APP}.\n\nChoose Default install for a new CT.\nSuggested LXC address is ${PREFERRED_LXC_IP:-192.168.13.14} on this host LAN (prefix /${DEFAULT_PREFIX:-20}).\nWhen it finishes, open http://<that-LXC-address>/\n\nSource: ${REPO_URL}" 16 78
 
 MODE="$(menu "What do you want to do?" \
   default "Default install (recommended)" \
@@ -380,8 +279,15 @@ if [[ "$MODE" == "repair" || "$MODE" == "update" || "$MODE" == "backup" || "$MOD
       exit 0
       ;;
     repair)
-      FIX_IP="$(ask "LAN IPv4 for this CT" "192.168.14.13")"
-      FIX_GW="$(ask "Router / gateway" "192.168.14.1")"
+      FIX_IP="${PREFERRED_LXC_IP:-192.168.13.14}"
+      FIX_GW="$(host_ipv4_on_bridge vmbr0 2>/dev/null || true)"
+      if lan="$(detect_lan_on_bridge vmbr0 2>/dev/null)"; then
+        FIX_IP="${lan%% *}"
+        rest="${lan#* }"
+        FIX_GW="${rest%% *}"
+      fi
+      FIX_IP="$(ask "LAN IPv4 for this CT" "$FIX_IP")"
+      FIX_GW="$(ask "Gateway (this Proxmox host address on the bridge)" "$FIX_GW")"
       if pct exec "$CTID" -- test -f /opt/receiptvault/deploy/make-reachable.sh; then
         pct exec "$CTID" -- env RV_GATEWAY="$FIX_GW" bash /opt/receiptvault/deploy/make-reachable.sh "$FIX_IP" 80
       else
@@ -430,14 +336,15 @@ EOS
         STATIC_IP="${lan%% *}"
         rest="${lan#* }"
         GW="${rest%% *}"
-        STATIC_CIDR="${STATIC_IP}/24"
+        STATIC_CIDR="${rest#* }"
+        STATIC_CIDR="${STATIC_CIDR%% *}"
         apply_ct_static_ip vmbr0 || true
       fi
       if [[ -f "${SCRIPT_DIR}/publish-on-host.sh" ]]; then
         bash "${SCRIPT_DIR}/publish-on-host.sh" "$CTID" || true
       fi
-      HOST_IP="$(ip -4 -o addr show dev vmbr0 2>/dev/null | awk '{print $4; exit}' | cut -d/ -f1)"
-      msg "Updated CT $CTID.\n\nOpen this (same IP as the Proxmox UI):\n\n  http://${HOST_IP:-192.168.14.1}:8484/"
+      OPEN="$(public_url_for "${STATIC_IP:-${PREFERRED_LXC_IP:-192.168.13.14}}" 80)"
+      msg "Updated CT $CTID.\n\nOpen this:\n\n  ${OPEN}"
       exit 0
       ;;
     backup)
@@ -698,9 +605,13 @@ systemctl enable --now cloudflared"
   fi
 fi
 
-HOST_IP="$(ip -4 -o addr show dev vmbr0 2>/dev/null | awk '{print $4; exit}' | cut -d/ -f1)"
-OPEN_URL="http://${HOST_IP:-192.168.14.1}:8484/"
-FINAL="ReceiptVault CT ${CTID} is ready.\n\nOpen this on the desktop (same IP as the Proxmox UI):\n  ${OPEN_URL}\n\nAlso: ${PUBLIC}\n\nCreate the owner, save the Entra app in Settings, connect Hotmail, start the historical scan.\n\nLog: ${LOG}"
+OPEN_URL="$(public_url_for "${ACCESS_IP}" "${APPPORT}")"
+HOST_IP="$(host_ipv4_on_bridge vmbr0 2>/dev/null || true)"
+FINAL="ReceiptVault CT ${CTID} is ready.\n\nOpen this on the desktop:\n  ${OPEN_URL}\n"
+if [[ -n "${HOST_IP:-}" ]]; then
+  FINAL="${FINAL}\nHost proxy (if the LXC address is blocked):\n  http://${HOST_IP}:8484/\n"
+fi
+FINAL="${FINAL}\nCreate the owner, save the Entra app in Settings, connect Hotmail, start the historical scan.\n\nLog: ${LOG}"
 msg "$FINAL"
 log "Completed CT $CTID ip=$ACCESS_IP url=$OPEN_URL"
 echo -e "${GN}Done.${CL} Open ${BL}${OPEN_URL}${CL}"

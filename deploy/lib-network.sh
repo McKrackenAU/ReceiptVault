@@ -1,6 +1,10 @@
 # Shared IPv4 helpers for the Proxmox installer.
 # shellcheck shell=bash
 
+# LXC address the owner asked for. Gateway and prefix come from the host bridge.
+PREFERRED_LXC_IP="${RECEIPTVAULT_LXC_IP:-192.168.13.14}"
+DEFAULT_PREFIX="${RECEIPTVAULT_PREFIX:-20}"
+
 normalize_ipv4_cidr() {
   local raw="${1// /}"
   local gw="${2:-}"
@@ -12,21 +16,22 @@ normalize_ipv4_cidr() {
   fi
   if [[ "$raw" != */* ]]; then
     if [[ -n "$gw" ]]; then
-      raw="$(python3 - "$raw" "$gw" <<'PY'
+      raw="$(python3 - "$raw" "$gw" "$DEFAULT_PREFIX" <<'PY'
 import ipaddress, sys
 ip = ipaddress.ip_address(sys.argv[1])
 gw = ipaddress.ip_address(sys.argv[2])
-for prefix in (24, 16, 8):
+fallback = int(sys.argv[3])
+for prefix in (24, 20, 16, 8):
     net = ipaddress.ip_network(f"{ip}/{prefix}", strict=False)
     if gw in net:
         print(f"{ip}/{prefix}")
         break
 else:
-    print(f"{ip}/16")
+    print(f"{ip}/{fallback}")
 PY
 )"
     else
-      raw="${raw}/24"
+      raw="${raw}/${DEFAULT_PREFIX}"
     fi
   fi
   if ! python3 -c "import ipaddress,sys; ipaddress.ip_interface(sys.argv[1])" "$raw" 2>/dev/null; then
@@ -50,9 +55,15 @@ host_bridge_cidr() {
   ip -4 -o addr show dev "$br" 2>/dev/null | awk '{print $4; exit}'
 }
 
+host_ipv4_on_bridge() {
+  local cidr
+  cidr="$(host_bridge_cidr "$1")" || true
+  [[ -n "$cidr" ]] && printf '%s\n' "${cidr%%/*}"
+}
+
 suggest_static_cidr() {
   local bridge_cidr="$1"
-  local want_host="${2:-13}"
+  local want_host="${2:-14}"
   python3 - "$bridge_cidr" "$want_host" <<'PY'
 import ipaddress, sys
 net = ipaddress.ip_network(sys.argv[1], strict=False)
@@ -82,36 +93,47 @@ raise SystemExit(0 if addr in net else 1)
 PY
 }
 
-# Prints: LXC_IP GATEWAY CIDR  on the same IPv4 network as the Proxmox bridge.
-# Example: 192.168.14.13 192.168.14.1 192.168.14.13/24
-detect_lan_on_bridge() {
-  local br="${1:-vmbr0}"
-  python3 - "$br" <<'PY'
-import ipaddress, subprocess, sys
-bridge = sys.argv[1]
-out = subprocess.check_output(["ip", "-4", "-o", "addr", "show", "dev", bridge], text=True, stderr=subprocess.DEVNULL)
-cidr = None
-for line in out.splitlines():
-    parts = line.split()
-    if "inet" in parts:
-        cidr = parts[parts.index("inet") + 1]
-        break
-if not cidr:
-    raise SystemExit(1)
-iface = ipaddress.ip_interface(cidr)
+# Prints: LXC_IP GATEWAY CIDR
+# Prefers 192.168.13.14 on the host LAN. Uses the host prefix (/20 here).
+# If the host iface is listed as /24 but 192.168.13.14 still shares a /20
+# with the host, use 192.168.13.14/20 anyway.
+choose_lxc_on_host_cidr() {
+  local host_cidr="$1"
+  local prefer="${2:-$PREFERRED_LXC_IP}"
+  local fallback_prefix="${3:-$DEFAULT_PREFIX}"
+  python3 - "$host_cidr" "$prefer" "$fallback_prefix" <<'PY'
+import ipaddress, sys
+iface = ipaddress.ip_interface(sys.argv[1])
+prefer = ipaddress.ip_address(sys.argv[2])
+fallback_prefix = int(sys.argv[3])
 net = iface.network
 host = iface.ip
-# Prefer .13 on this LAN so browsers that already open Proxmox on this subnet can reach it.
-candidate = ipaddress.ip_address(int(net.network_address) + 13)
+if prefer in net and prefer != host and prefer != net.broadcast_address:
+    print(f"{prefer} {host} {prefer}/{net.prefixlen}")
+    raise SystemExit(0)
+wide = ipaddress.ip_network(f"{prefer}/{fallback_prefix}", strict=False)
+if host in wide and prefer != host:
+    print(f"{prefer} {host} {prefer}/{fallback_prefix}")
+    raise SystemExit(0)
+candidate = ipaddress.ip_address(int(net.network_address) + 14)
 if candidate not in net or candidate == host or candidate == net.broadcast_address:
-    candidate = ipaddress.ip_address(int(net.network_address) + 23)
-    if candidate not in net or candidate == host:
-        for addr in net.hosts():
-            if addr != host:
-                candidate = addr
-                break
+    candidate = None
+    for addr in net.hosts():
+        if addr != host:
+            candidate = addr
+            break
+if candidate is None:
+    raise SystemExit(1)
 print(f"{candidate} {host} {candidate}/{net.prefixlen}")
 PY
+}
+
+detect_lan_on_bridge() {
+  local br="${1:-vmbr0}"
+  local cidr
+  cidr="$(host_bridge_cidr "$br")" || return 1
+  [[ -n "$cidr" ]] || return 1
+  choose_lxc_on_host_cidr "$cidr"
 }
 
 public_url_for() {

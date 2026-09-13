@@ -94,4 +94,4 @@ if [[ "$ok" -ne 1 ]]; then
   exit 1
 fi
 echo "UPDATED to 1.5.1"
-echo "Hard-refresh http://192.168.14.1:8484/ — Settings must show 1.5.1"
+echo "Hard-refresh the LXC address in the browser — Settings must show 1.5.1"

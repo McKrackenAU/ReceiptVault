@@ -17,7 +17,7 @@ git clone --depth 1 https://github.com/McKrackenAU/ReceiptVault.git /root/Receip
 bash /root/ReceiptVault/deploy/install-receiptvault.sh
 ```
 
-Choose **Update** for an existing CT. When it finishes, open **http://192.168.14.1:8484/** on the desktop (same IP as the Proxmox UI, port 8484). Do not open `192.168.13.13`. Hard-refresh (Ctrl+Shift+R). Settings must show **1.5.1**.
+Choose **Default install** for a new CT, or **Update** for an existing one. Accept `192.168.13.14` and the suggested gateway. When it finishes, open **http://192.168.13.14/**. Hard-refresh (Ctrl+Shift+R). Settings must show **1.5.1**.
 
 ## App will not start
 
@@ -37,7 +37,7 @@ Setup is one-time. Reset the owner with `receiptvault reset-password` rather tha
 - Tenant policy may block unverified apps; an admin may need to allow `Mail.Read`.
 - For local tests set `RECEIPTVAULT_GRAPH_MOCK=true` and use the three mock identities.
 - Use **Sign in with Microsoft** (device code). In Entra, enable **Allow public client flows**.
-- The LXC must reach the internet via the same gateway as Proxmox (typically **192.168.14.1**).
+- The LXC must reach the internet via the gateway on the Proxmox bridge (the address the installer suggests).
 
 ## Scan stuck or duplicated
 

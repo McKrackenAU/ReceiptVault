@@ -97,7 +97,7 @@ export function SettingsPage() {
           <p className="mb-3 text-sm text-slate">
             Delegated permissions only: openid, profile, email, offline_access, Mail.Read. Turn on{' '}
             <strong>Allow public client flows</strong> in the Entra app. Sign-in uses a short Microsoft device code so it
-            works on LAN HTTP (open the Proxmox host IP on port 8484). This box never asks for your Hotmail password.
+            works on LAN HTTP. This box never asks for your Hotmail password.
           </p>
           <Label>Application (client) ID</Label>
           <Input value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder={settings.ms_client_configured ? 'Already saved — paste to replace' : 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'} />

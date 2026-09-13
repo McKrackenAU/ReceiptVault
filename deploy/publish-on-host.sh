@@ -61,8 +61,8 @@ echo "CT address: ${CT_IP:-unknown}"
 BRIDGE="$(pct config "$CTID" | sed -n 's/.*bridge=\([^,]*\).*/\1/p' | head -n 1)"
 BRIDGE="${BRIDGE:-vmbr0}"
 if [[ -n "${CT_IP:-}" ]]; then
-  # Host is often 192.168.14.1/24 while the CT is still 192.168.13.13.
-  # They share vmbr0, so a /32 on the bridge lets the host reach the CT.
+  # Host and CT may sit on different octets of the same /20.
+  # A /32 on the bridge lets the host reach the CT even if its iface is /24.
   ip route replace "${CT_IP}/32" dev "$BRIDGE" 2>/dev/null || true
 fi
 
@@ -180,7 +180,8 @@ if [[ -f /root/ReceiptVault/deploy/install-host-command.sh ]]; then
 fi
 
 echo
-echo "Open this on the desktop (same IP as the Proxmox UI, different port):"
+echo "Open the LXC address on the desktop:"
+echo "  http://${CT_IP}/"
+echo "Host proxy if that address is blocked:"
 echo "  ${URL}"
-echo "Do not use 192.168.13.13"
 echo "Later updates on the host: receiptvault-update"
