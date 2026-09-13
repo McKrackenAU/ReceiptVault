@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Run as root on the Proxmox HOST. One line — do not split it.
+# Run as root on the Proxmox HOST. Paste each line separately:
 #
 #   wget --no-cache -O /root/update-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/update-from-host.sh
 #   bash /root/update-receiptvault.sh
 #
-# The LXC often has no .git (tar install). This unpacks GitHub main and rebuilds the UI.
-echo "ReceiptVault update 1.3.1 — unpack GitHub main (no git required)"
+# Downloads the tree on the HOST (which can reach GitHub), then copies it
+# into the LXC. The guest often cannot git-pull and sometimes cannot curl GitHub.
+echo "ReceiptVault update 1.3.2 — host download, then unpack in the LXC"
 set -euo pipefail
 export LANG=C.UTF-8 LC_ALL=C.UTF-8
 
@@ -33,7 +34,19 @@ if [[ -z "$CTID" ]]; then
   exit 1
 fi
 
-echo "Updating CT ${CTID}"
+TGZ=/tmp/receiptvault-main.tgz
+echo "Downloading source on the Proxmox host"
+wget --no-cache -O "$TGZ" https://github.com/McKrackenAU/ReceiptVault/archive/refs/heads/main.tar.gz
+if ! gzip -t "$TGZ" 2>/dev/null; then
+  echo "Download was not a gzip archive. First bytes:"
+  head -c 200 "$TGZ"; echo
+  exit 1
+fi
+
+echo "Copying archive into CT ${CTID}"
+pct push "$CTID" "$TGZ" /tmp/receiptvault-main.tgz
+
+echo "Unpacking and rebuilding UI"
 pct exec "$CTID" -- env LANG=C.UTF-8 LC_ALL=C.UTF-8 bash -s <<'EOS'
 set -euo pipefail
 export PATH="/usr/local/bin:/usr/bin:$PATH"
@@ -42,24 +55,36 @@ if [[ ! -d "$APP/backend" ]]; then
   echo "Missing $APP"
   exit 1
 fi
-curl -fsSL https://github.com/McKrackenAU/ReceiptVault/archive/refs/heads/main.tar.gz -o /tmp/receiptvault-main.tgz
 rm -rf /tmp/ReceiptVault-main
 tar -xzf /tmp/receiptvault-main.tgz -C /tmp
+if [[ ! -d /tmp/ReceiptVault-main/backend ]]; then
+  echo "Unexpected archive layout:"; ls /tmp; exit 1
+fi
 cp -a /tmp/ReceiptVault-main/. "$APP/"
 rm -rf /tmp/ReceiptVault-main /tmp/receiptvault-main.tgz
-chown -R receiptvault:receiptvault "$APP" || true
+id receiptvault >/dev/null 2>&1 && chown -R receiptvault:receiptvault "$APP/frontend" "$APP/backend/app" "$APP/deploy" || true
 cd "$APP/frontend"
-if [[ -f package-lock.json ]]; then
-  npm ci
-else
-  npm install
+if ! command -v npm >/dev/null; then
+  echo "npm is missing inside the LXC"
+  exit 1
 fi
-npm run build
+npm install --omit=optional
+npx vite build
 chmod -R a+rX "$APP/frontend/dist"
+if [[ ! -f "$APP/frontend/dist/index.html" ]]; then
+  echo "UI build did not produce frontend/dist/index.html"
+  exit 1
+fi
 systemctl restart receiptvault
-sleep 2
-curl -fsS http://127.0.0.1/health/live
-echo
+ok=0
+for _ in $(seq 1 30); do
+  curl -fsS http://127.0.0.1/health/live >/dev/null 2>&1 && ok=1 && break
+  sleep 1
+done
+if [[ "$ok" -ne 1 ]]; then
+  journalctl -u receiptvault -n 40 --no-pager || true
+  exit 1
+fi
 echo UPDATED
 EOS
 
