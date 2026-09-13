@@ -14,7 +14,9 @@ If that is not working, or Settings still says **1.0.0**, paste this **one line*
 echo UPDATE && wget -4 --timeout=25 --tries=2 -nv -O /root/fix-receiptvault.sh https://raw.githubusercontent.com/McKrackenAU/ReceiptVault/main/deploy/fix-from-host.sh && bash /root/fix-receiptvault.sh
 ```
 
-The first line must say `ReceiptVault 1.4.0`. That script downloads the new app on the host (the LXC has no git repo), unpacks it, purges Caddy, and binds port 80. Hard-refresh the browser (Ctrl+Shift+R). Settings must then show **1.4.0**.
+You must see `UPDATE` immediately. If the prompt is `>` instead of `#`, the paste broke — press Ctrl+C and try again. If `UPDATE` appears then nothing, wget cannot reach GitHub; wait 25 seconds for the timeout error.
+
+The first line after download must say `ReceiptVault 1.4.0`. That script downloads the new app on the host (the LXC has no git repo), unpacks it, purges Caddy, and binds port 80. Hard-refresh the browser (Ctrl+Shift+R). Settings must then show **1.4.0**.
 
 ## App will not start
 
